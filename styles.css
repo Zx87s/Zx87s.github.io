@@ -522,3 +522,6 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Keep permission-gated controls hidden after icons add display utilities. */
+[hidden] { display: none !important; }
