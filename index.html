@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="مكتبة تعريبات Zx87s العربية." />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://ta3reebat-memberships.zx87s.chatgpt.site; connect-src 'self' https://ta3reebat-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
+    <title>تعريبات Zx87s</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=16" />
+    <script src="./app.js?v=16" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="#top"><span>تعريبات</span><strong>Zx87s</strong></a>
+        <nav class="main-nav" aria-label="التنقل الرئيسي">
+          <a href="#news">الأخبار</a>
+          <a href="#library">المكتبة</a>
+          <a href="#vip">VIP</a>
+          <a class="discord-link" href="https://discord.com/invite/Abc3unQS3m" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
+            <span>مجتمع</span>
+          </a>
+        </nav>
+        <div class="header-actions">
+          <button class="button ghost" id="admin-button" type="button" hidden>الإدارة</button>
+          <button class="notification-button" id="notification-button" type="button" aria-label="الإشعارات" title="الإشعارات" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+            <span class="notification-badge" id="notification-badge" hidden>0</span>
+          </button>
+          <button class="button primary" id="account-button" type="button">دخول</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="shell hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">مكتبة تعريبات Zx87s</p>
+            <h1>التعريب الذي<br /><span>تبحث عنه.</span></h1>
+            <p class="hero-description">تعريبات عربية للألعاب، مجانية ومخصصة لأعضاء VIP.</p>
+            <label class="search-box" for="catalog-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+              <input id="catalog-search" type="search" autocomplete="off" placeholder="ابحث باسم اللعبة…" />
+            </label>
+          </div>
+          <aside class="vip-card" id="vip">
+            <span class="crown" aria-hidden="true">♛</span>
+            <p class="vip-kicker">عضوية VIP</p>
+            <h2><strong>3</strong> دولار</h2>
+            <p>وصول لمدة 30 يومًا</p>
+            <button class="paypal-button" id="vip-support-button" type="button">الدعم عبر PayPal <b>3 USD</b></button>
+            <button class="invoice-shortcut" id="invoice-shortcut" type="button">إرسال رقم فاتورة PayPal</button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="news-section" id="news">
+        <div class="shell">
+          <div class="section-heading">
+            <div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div>
+          </div>
+          <div class="news-grid" id="news-grid" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="library-section" id="library">
+        <div class="shell">
+          <div class="section-heading">
+            <div><p class="eyebrow">المكتبة</p><h2>التعريبات</h2></div>
+            <div class="filter-group" aria-label="تصفية المكتبة">
+              <button class="filter is-active" type="button" data-filter="all">الكل</button>
+              <button class="filter" type="button" data-filter="free">مجاني</button>
+              <button class="filter" type="button" data-filter="vip">VIP</button>
+            </div>
+          </div>
+          <p class="results-status" id="results-status" role="status"></p>
+          <div class="catalog-grid" id="catalog-grid"></div>
+          <div class="empty-state" id="empty-state" hidden><h3>لا توجد تعريبات</h3></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell footer-inner">
+        <p>© <span id="year"></span> Zx87s</p>
+        <button class="footer-link" id="privacy-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>سياسة الخصوصية</span>
+        </button>
+      </div>
+    </footer>
+
+    <dialog id="translation-dialog" class="modal detail-modal">
+      <section class="modal-card detail-card">
+        <button class="modal-close" data-close="translation-dialog" aria-label="رجوع">×</button>
+        <div id="translation-detail"></div>
+      </section>
+    </dialog>
+
+    <dialog id="image-dialog" class="image-modal">
+      <button class="modal-close" data-close="image-dialog" aria-label="إغلاق الصورة">×</button>
+      <img id="lightbox-image" alt="" />
+    </dialog>
+
+    <dialog id="auth-dialog" class="modal auth-modal">
+      <section class="modal-card narrow">
+        <button class="modal-close" data-close="auth-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-tabs">
+          <button class="tab is-active" type="button" data-auth-tab="login">تسجيل الدخول</button>
+          <button class="tab" type="button" data-auth-tab="register">حساب جديد</button>
+        </div>
+        <form id="login-form" class="form-grid">
+          <label>الاسم أو البريد<input name="identifier" autocomplete="username" required /></label>
+          <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="button primary wide" type="submit">دخول</button>
+        </form>
+        <form id="register-form" class="form-grid" hidden>
+          <label>اسم المستخدم<input name="username" autocomplete="username" minlength="3" maxlength="30" required /></label>
+          <label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required /></label>
+          <label>كلمة المرور<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+          <button class="button primary wide" type="submit">إنشاء الحساب</button>
+        </form>
+        <p class="form-message" id="auth-message" role="status"></p>
+      </section>
+    </dialog>
+
+    <dialog id="account-dialog" class="modal">
+      <section class="modal-card account-card">
+        <button class="modal-close" data-close="account-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>حسابي</h2></div><button class="button danger" id="logout-button" type="button">خروج</button></div>
+        <div class="account-summary" id="account-summary"></div>
+        <details class="account-edit">
+          <summary>تعديل الحساب</summary>
+          <form id="account-form" class="form-grid two-columns">
+            <label>اسم المستخدم<input name="username" minlength="3" maxlength="30" required /></label>
+            <label>البريد الإلكتروني<input name="email" type="email" required /></label>
+            <label>كلمة المرور الحالية<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
+            <label>كلمة مرور جديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" /></label>
+            <button class="button primary" type="submit">حفظ</button>
+          </form>
+          <p class="form-message" id="account-message" role="status"></p>
+        </details>
+        <section class="history-section"><h3>التعريبات المحمّلة</h3><div id="download-history" class="history-list"></div></section>
+        <section class="history-section"><h3>طلبات VIP</h3><div id="account-invoice-history" class="invoice-history"></div></section>
+      </section>
+    </dialog>
+
+    <dialog id="notifications-dialog" class="modal">
+      <section class="modal-card notifications-card">
+        <button class="modal-close" data-close="notifications-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>الإشعارات</h2></div></div>
+        <div class="notifications-list" id="notifications-list" aria-live="polite"></div>
+      </section>
+    </dialog>
+
+    <dialog id="admin-dialog" class="modal admin-modal">
+      <section class="modal-card admin-card">
+        <button class="modal-close" data-close="admin-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading admin-main-heading">
+          <div><p class="eyebrow">لوحة Owner</p><h2>مركز الإدارة</h2><p class="admin-subtitle">إدارة المحتوى والمستخدمين والفواتير من مكان واحد</p></div>
+          <span class="owner-mark">Owner</span>
+        </div>
+        <div class="admin-overview" id="admin-overview"></div>
+        <div class="admin-tabs">
+          <button class="tab is-active" type="button" data-admin-tab="translations">التعريبات</button>
+          <button class="tab" type="button" data-admin-tab="news">الأخبار</button>
+          <button class="tab" type="button" data-admin-tab="invoices">فواتير PayPal</button>
+          <button class="tab" type="button" data-admin-tab="users">المستخدمون</button>
+          <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
+        </div>
+        <section id="admin-translations-panel">
+          <form id="translation-form" class="translation-form">
+            <input name="id" type="hidden" />
+            <label>اسم التعريب<input name="title" maxlength="120" required /></label>
+            <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
+            <label class="span-2">الوصف<textarea name="description" rows="3" maxlength="2000"></textarea></label>
+            <label>الفئة<select name="access" required><option value="free">مجاني</option><option value="vip">VIP</option></select></label>
+            <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
+            <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 512MB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
+            <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
+            <label class="file-field">صور داخل اللعبة (حتى 4)<span class="file-picker"><span data-file-label="gallery">لم تُحدد صور</span><span class="file-button">اختيار صور</span><input name="gallery" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></span></label>
+            <label>تاريخ النشر<input name="publishedAt" type="datetime-local" /></label>
+            <label class="check-label"><input name="isFeatured" type="checkbox" /> تعريب مميز</label>
+            <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور</label>
+            <div class="form-actions span-2"><button class="button primary" type="submit">حفظ التعريب</button><button class="button ghost" id="cancel-edit" type="button" hidden>إلغاء التعديل</button></div>
+          </form>
+          <p class="form-message" id="translation-message" role="status"></p>
+          <div class="admin-list" id="admin-translations"></div>
+        </section>
+        <section id="admin-news-panel" hidden>
+          <form id="news-form" class="translation-form news-form">
+            <input name="id" type="hidden" />
+            <label class="span-2">عنوان الخبر<input name="title" maxlength="140" required /></label>
+            <label class="span-2">نص الخبر<textarea name="body" rows="5" maxlength="4000" required></textarea></label>
+            <label class="file-field span-2">صورة الخبر<span class="file-picker"><span data-file-label="newsCover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="newsCover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
+            <label class="check-label"><input name="removeCover" type="checkbox" /> إزالة صورة الخبر الحالية</label>
+            <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور وإرسال إشعار للحسابات</label>
+            <div class="form-actions span-2"><button class="button primary" type="submit">نشر الخبر</button><button class="button ghost" id="cancel-news-edit" type="button" hidden>إلغاء التعديل</button></div>
+          </form>
+          <p class="form-message" id="news-message" role="status"></p>
+          <div class="admin-list" id="admin-news"></div>
+        </section>
+        <section id="admin-invoices-panel" hidden>
+          <div class="admin-panel-heading">
+            <div><p class="eyebrow">طلبات العضوية</p><h3>فواتير PayPal</h3></div>
+            <div class="invoice-filters" aria-label="تصفية الفواتير">
+              <button class="filter is-active" type="button" data-invoice-filter="pending">قيد المراجعة</button>
+              <button class="filter" type="button" data-invoice-filter="approved">مقبولة</button>
+              <button class="filter" type="button" data-invoice-filter="rejected">مرفوضة</button>
+              <button class="filter" type="button" data-invoice-filter="all">الكل</button>
+            </div>
+          </div>
+          <div class="admin-list invoice-admin-list" id="admin-invoices"></div>
+        </section>
+        <section id="admin-users-panel" hidden><div class="admin-list" id="admin-users"></div></section>
+        <section id="admin-reports-panel" hidden><div class="admin-list" id="admin-reports"></div></section>
+      </section>
+    </dialog>
+
+    <dialog id="vip-dialog" class="modal">
+      <section class="modal-card narrow vip-dialog-card" aria-labelledby="vip-dialog-title">
+        <button class="modal-close" data-close="vip-dialog" aria-label="إغلاق">×</button>
+        <span class="crown" aria-hidden="true">♛</span><h2 id="vip-dialog-title">عضوية VIP</h2>
+        <p>ادعم بـ3 دولارات لتحصل على وصول لمدة 30 يومًا.</p>
+        <div class="vip-account" id="vip-account"></div>
+        <a class="paypal-button" href="https://paypal.me/Zx87s/3USD" target="_blank" rel="noopener noreferrer">الدعم عبر PayPal <b>3 USD</b></a>
+        <form class="invoice-form" id="invoice-form">
+          <label>إرسال رقم فاتورة PayPal<input name="invoiceNumber" dir="ltr" autocomplete="off" minlength="6" maxlength="80" placeholder="مثال: 1AB23456CD789012E" required /></label>
+          <button class="button primary wide" type="submit">إرسال للمراجعة</button>
+        </form>
+        <p class="form-message" id="invoice-message" role="status"></p>
+        <div class="vip-invoice-section"><h3>طلباتك</h3><div class="invoice-history" id="vip-invoice-history"></div></div>
+      </section>
+    </dialog>
+
+    <dialog id="privacy-dialog" class="modal">
+      <article class="modal-card privacy-card" aria-labelledby="privacy-title">
+        <button class="modal-close" data-close="privacy-dialog" aria-label="إغلاق">×</button>
+        <header class="privacy-heading">
+          <span class="privacy-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+          </span>
+          <div><p class="eyebrow">الخصوصية</p><h2 id="privacy-title">سياسة الخصوصية</h2><p class="privacy-updated">آخر تحديث: 28 أغسطس 2026</p></div>
+        </header>
+
+        <div class="privacy-content">
+          <p>نحترم خصوصيتك في تعريبات Zx87s، ونريد أن يكون واضحًا لك ما الذي نحفظه ولماذا. تشرح هذه السياسة طريقة التعامل مع بياناتك عند إنشاء حساب أو تنزيل تعريب أو المشاركة في التعليقات.</p>
+
+          <section>
+            <h3>البيانات التي نجمعها</h3>
+            <p>عند إنشاء حساب نطلب اسم المستخدم والبريد الإلكتروني وكلمة المرور. لا تُحفظ كلمة المرور بصورتها الأصلية، بل تُخزن كقيمة تحقق أحادية الاتجاه مع قيمة عشوائية خاصة بها. ونحفظ أيضًا رقم الحساب، فئة العضوية، تاريخ إنشاء الحساب والجلسات النشطة.</p>
+            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
+          </section>
+
+          <section>
+            <h3>كيف نستخدم البيانات</h3>
+            <p>نستخدم هذه البيانات لتشغيل الحساب وتسجيل الدخول، وتحديد صلاحية VIP، وحفظ سجل التنزيلات، وإظهار الردود والإشعارات، ومراجعة البلاغات، ومنع إساءة الاستخدام، وإصلاح المشكلات التي تؤثر في عمل الموقع.</p>
+          </section>
+
+          <section>
+            <h3>ما يظهر للآخرين</h3>
+            <p>عندما تكتب تعليقًا أو ردًا يظهر اسم المستخدم وفئة الحساب بجانب النص. لا يظهر بريدك الإلكتروني أو كلمة المرور أو سجل تنزيلاتك للزوار. وقد يحذف صاحب التعليق تعليقه، كما يستطيع الـOwner حذف المحتوى المخالف ومراجعة البلاغات.</p>
+          </section>
+
+          <section>
+            <h3>الجلسات وحماية الحساب</h3>
+            <p>يحتفظ المتصفح برمز جلسة لتبقى مسجلًا للدخول، بينما تُحفظ في الخادم نسخة مجزأة منه فقط. يعمل الموقع عبر اتصال HTTPS ويطبق ضوابط للصلاحيات والطلبات ومعدل محاولات الدخول. ومع ذلك لا توجد خدمة عبر الإنترنت يمكن ضمان حمايتها بنسبة 100%، لذلك ننصح باستخدام كلمة مرور قوية ومختلفة وعدم مشاركتها مع أي شخص.</p>
+          </section>
+
+          <section>
+            <h3>الدفع والخدمات الخارجية</h3>
+            <p>زر الدعم يفتح PayPal في صفحة خارجية. لا يجمع موقعنا أرقام البطاقات أو بيانات الدفع ولا يخزنها؛ تتم العملية لدى PayPal وفق سياسته. بعد الدفع يمكنك إرسال رقم الفاتورة من حسابك، ونحفظه مع رقم حسابك وحالة المراجعة حتى يتمكن Owner من التحقق منه وتفعيل VIP. وقد تفتح بعض روابط التنزيل أو المجتمع خدمات خارجية مثل Google Drive وMediaFire وDiscord، وتخضع زيارتك لها لسياسات تلك الخدمات.</p>
+          </section>
+
+          <section>
+            <h3>مشاركة البيانات والاحتفاظ بها</h3>
+            <p>لا نبيع بياناتك ولا نشاركها لأغراض إعلانية. قد تعالجها خدمات الاستضافة وقاعدة البيانات وتخزين الملفات والحماية بالقدر اللازم لتشغيل الموقع، أو نكشف القدر المطلوب إذا ألزمنا القانون بذلك. نحتفظ ببيانات الحساب ما دام الحساب قائمًا، وبسجلات الأمان للمدة اللازمة للحماية، وقد نحتفظ ببعض السجلات عند الحاجة لمنع الاحتيال أو تنفيذ التزام قانوني.</p>
+          </section>
+
+          <section>
+            <h3>اختياراتك</h3>
+            <p>يمكنك تعديل اسم المستخدم والبريد وكلمة المرور من قسم «حسابي»، وحذف تعليقاتك من صفحة التعريب. لطلب نسخة من بياناتك أو تصحيحها أو حذف حسابك، تواصل مع Owner عبر <a href="https://discord.com/invite/Abc3unQS3m" target="_blank" rel="noopener noreferrer">مجتمع Zx87s على Discord</a>. قد نطلب التحقق من ملكية الحساب قبل تنفيذ الطلب.</p>
+          </section>
+
+          <section>
+            <h3>حسابات القاصرين والتغييرات</h3>
+            <p>الموقع غير موجه عمدًا إلى الأطفال دون السن المسموح به لإنشاء حساب مستقل في بلدهم. إذا كنت ولي أمر وتعتقد أن طفلًا زودنا ببياناته، فتواصل معنا لمراجعتها. قد نحدّث هذه السياسة عند إضافة ميزة جديدة أو تغير طريقة تشغيل الموقع، وسنغيّر تاريخ التحديث الظاهر في أعلى الصفحة.</p>
+          </section>
+        </div>
+      </article>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+  </body>
+</html>
