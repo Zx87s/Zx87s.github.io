@@ -24,6 +24,8 @@
     invoices: [],
     adminInvoices: [],
     adminInvoiceFilter: "pending",
+    translationRequests: [],
+    adminTranslationRequests: [],
     activeTranslation: null,
     comments: [],
     replyingTo: null,
@@ -66,6 +68,11 @@
     receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
     close: '<path d="M6 6l12 12M18 6 6 18"/>',
+    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
+    eyeOff: '<path d="m3 3 18 18M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-2.1 2.8M6.5 7.2C3.6 9.1 2 12 2 12s3.5 6 10 6c1.2 0 2.3-.2 3.3-.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-3 3 3 3m-6 0 3 3"/>',
+    gamepad: '<path d="M7 8h10a4 4 0 0 1 3.8 5.2l-1.2 4a2 2 0 0 1-3.3.9L14 16h-4l-2.3 2.1a2 2 0 0 1-3.3-.9l-1.2-4A4 4 0 0 1 7 8Z"/><path d="M7 12v3m-1.5-1.5h3M16 12h.01M18 14h.01"/>',
+    copy: '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
   };
 
   function icon(name) {
@@ -85,6 +92,51 @@
 
   function makeIconText(tag, className, text, iconName) {
     return setIconText(make(tag, className), iconName, text);
+  }
+
+  function enhancePasswordInputs() {
+    $$('input[type="password"]').forEach((input) => {
+      if (input.parentElement?.classList.contains("password-control")) return;
+      const wrapper = make("span", "password-control");
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.append(input);
+      const toggle = make("button", "password-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-label", "إظهار كلمة المرور");
+      toggle.title = "إظهار كلمة المرور";
+      toggle.append(icon("eye"));
+      toggle.addEventListener("click", () => {
+        const visible = input.type === "text";
+        input.type = visible ? "password" : "text";
+        toggle.setAttribute("aria-label", visible ? "إظهار كلمة المرور" : "إخفاء كلمة المرور");
+        toggle.title = visible ? "إظهار كلمة المرور" : "إخفاء كلمة المرور";
+        toggle.replaceChildren(icon(visible ? "eye" : "eyeOff"));
+      });
+      wrapper.append(toggle);
+    });
+  }
+
+  async function copyRecoveryCode() {
+    const code = $("#recovery-code-value").textContent.trim();
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast("تم نسخ رمز الاسترداد.");
+    } catch {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents($("#recovery-code-value"));
+      selection.removeAllRanges();
+      selection.addRange(range);
+      toast("حددنا الرمز. انسخه الآن واحفظه في مكان آمن.");
+    }
+  }
+
+  function confirmRecoveryCodeSaved() {
+    closeDialog("recovery-code-dialog");
+    $("#recovery-code-value").textContent = "";
+    if (state.afterAuth === "vip") openVipSupport().catch((error) => toast(error.message, "error"));
+    else if (state.afterAuth === "translation-request") openTranslationRequest().catch((error) => toast(error.message, "error"));
   }
 
   async function api(path, options = {}) {
@@ -133,6 +185,8 @@
     state.downloads = [];
     state.invoices = [];
     state.adminInvoices = [];
+    state.translationRequests = [];
+    state.adminTranslationRequests = [];
     state.afterAuth = null;
     state.notifications = [];
     state.unreadNotifications = 0;
@@ -491,6 +545,8 @@
       galleryGrid.append(make("p", "empty-row", "لا توجد صور."));
     } else {
       images.forEach((url, index) => {
+        const itemNode = make("div", "gallery-item");
+        itemNode.append(make("span", "gallery-label", `الصورة ${index + 1}`));
         const button = make("button", "gallery-image");
         button.type = "button";
         button.setAttribute("aria-label", `تكبير الصورة ${index + 1}`);
@@ -500,7 +556,8 @@
         image.loading = "lazy";
         button.append(image);
         button.addEventListener("click", () => openLightbox(url, image.alt));
-        galleryGrid.append(button);
+        itemNode.append(button);
+        galleryGrid.append(itemNode);
       });
     }
     gallery.append(galleryGrid);
@@ -795,7 +852,13 @@
     $$('[data-auth-tab]').forEach((button) => button.classList.toggle("is-active", button.dataset.authTab === tab));
     $("#login-form").hidden = tab !== "login";
     $("#register-form").hidden = tab !== "register";
+    $("#recover-form").hidden = tab !== "recover";
     $("#auth-message").textContent = "";
+  }
+
+  function showRecoveryCode(code) {
+    $("#recovery-code-value").textContent = code;
+    showDialog("recovery-code-dialog");
   }
 
   async function submitAuth(event, kind) {
@@ -811,7 +874,31 @@
       form.reset();
       closeDialog("auth-dialog");
       toast(kind === "login" ? "تم تسجيل الدخول." : "تم إنشاء الحساب.");
-      if (state.afterAuth === "vip") openVipSupport().catch((error) => toast(error.message, "error"));
+      if (kind === "register" && result.recoveryCode) {
+        showRecoveryCode(result.recoveryCode);
+      } else if (state.afterAuth === "vip") {
+        openVipSupport().catch((error) => toast(error.message, "error"));
+      } else if (state.afterAuth === "translation-request") {
+        openTranslationRequest().catch((error) => toast(error.message, "error"));
+      }
+    } catch (error) {
+      $("#auth-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function submitRecovery(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#auth-message").textContent = "جارٍ التحقق…";
+    try {
+      await api("/api/auth/recover", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      form.reset();
+      setAuthTab("login");
+      $("#auth-message").textContent = "تم تغيير كلمة المرور وإلغاء الجلسات القديمة. سجّل الدخول بكلمة المرور الجديدة.";
     } catch (error) {
       $("#auth-message").textContent = error.message;
     } finally {
@@ -865,6 +952,11 @@
     form.elements.email.value = user.email;
     form.elements.currentPassword.value = "";
     form.elements.newPassword.value = "";
+    $("#recovery-status").textContent = user.recoveryConfigured
+      ? "لديك رمز استرداد محفوظ. إنشاء رمز جديد سيُلغي الرمز السابق فورًا."
+      : "لا يوجد رمز استرداد محفوظ لهذا الحساب. أنشئه الآن واحتفظ به في مكان آمن.";
+    $("#recovery-code-form").reset();
+    $("#recovery-message").textContent = "";
     renderHistory();
     renderInvoiceHistory("#account-invoice-history");
   }
@@ -925,6 +1017,77 @@
     await loadPaypalInvoices();
   }
 
+  function translationRequestStatusLabel(status) {
+    if (status === "approved") return "تمت الموافقة";
+    if (status === "rejected") return "مرفوض";
+    return "قيد المراجعة";
+  }
+
+  function renderTranslationRequestHistory() {
+    const list = $("#translation-request-history");
+    if (!state.translationRequests.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لم ترسل طلبات بعد."));
+      return;
+    }
+    list.replaceChildren(...state.translationRequests.map((request) => {
+      const row = make("article", "request-history-row");
+      const image = make("img");
+      image.src = request.imageUrl;
+      image.alt = request.gameName;
+      image.loading = "lazy";
+      const info = make("div", "request-history-info");
+      info.append(make("strong", "", request.gameName), make("time", "", formatDateTime(request.createdAt)));
+      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)));
+      return row;
+    }));
+  }
+
+  async function loadTranslationRequests() {
+    const result = await api("/api/translation-requests");
+    state.translationRequests = result.requests || [];
+    renderTranslationRequestHistory();
+  }
+
+  async function openTranslationRequest() {
+    if (!state.user) {
+      state.afterAuth = "translation-request";
+      setAuthTab("login");
+      showDialog("auth-dialog");
+      return;
+    }
+    state.afterAuth = null;
+    $("#translation-request-message").textContent = "";
+    showDialog("translation-request-dialog");
+    await loadTranslationRequests();
+  }
+
+  async function submitTranslationRequest(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#translation-request-message").textContent = "جارٍ تجهيز الصورة وإرسال الطلب…";
+    try {
+      const selected = form.elements.requestImage.files?.[0];
+      if (!selected) throw new Error("اختر صورة اللعبة من جهازك.");
+      const prepared = await prepareImage(selected);
+      const body = new FormData();
+      body.append("gameName", form.elements.gameName.value);
+      body.append("reason", form.elements.reason.value);
+      body.append("image", prepared, prepared.name);
+      await api("/api/translation-requests", { method: "POST", body });
+      form.reset();
+      updateFileLabel(form.elements.requestImage);
+      $("#translation-request-message").textContent = "تم إرسال الطلب إلى Owner للمراجعة.";
+      await loadTranslationRequests();
+      if (state.user?.role === "admin") await loadAdminTranslationRequests();
+    } catch (error) {
+      $("#translation-request-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
   async function submitPaypalInvoice(event) {
     event.preventDefault();
     if (!state.user) {
@@ -982,6 +1145,28 @@
     }
   }
 
+  async function generateRecoveryCode(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#recovery-message").textContent = "";
+    try {
+      const result = await api("/api/auth/recovery-code", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      state.user = result.user;
+      form.reset();
+      renderAccount();
+      showRecoveryCode(result.recoveryCode);
+    } catch (error) {
+      $("#recovery-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
   async function logout() {
     try { await api("/api/auth/logout", { method: "POST" }); } catch { /* session is cleared locally */ }
     clearSession();
@@ -997,24 +1182,27 @@
 
   async function loadAdminData() {
     try {
-      const [translationResult, newsResult, userResult, reportResult, invoiceResult] = await Promise.all([
+      const [translationResult, newsResult, userResult, reportResult, invoiceResult, requestResult] = await Promise.all([
         api("/api/admin/translations"),
         api("/api/admin/news"),
         api("/api/admin/users"),
         api("/api/admin/comment-reports"),
         api("/api/admin/paypal-invoices"),
+        api("/api/admin/translation-requests"),
       ]);
       state.adminTranslations = translationResult.translations || [];
       state.adminNews = newsResult.news || [];
       state.users = userResult.users || [];
       state.adminReports = reportResult.reports || [];
       state.adminInvoices = invoiceResult.invoices || [];
+      state.adminTranslationRequests = requestResult.requests || [];
       renderAdminOverview();
       renderAdminTranslations();
       renderAdminNews();
       renderUsers();
       renderAdminReports();
       renderAdminInvoices();
+      renderAdminTranslationRequests();
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1026,16 +1214,18 @@
     $("#admin-news-panel").hidden = tab !== "news";
     $("#admin-invoices-panel").hidden = tab !== "invoices";
     $("#admin-users-panel").hidden = tab !== "users";
+    $("#admin-requests-panel").hidden = tab !== "requests";
     $("#admin-reports-panel").hidden = tab !== "reports";
   }
 
   function renderAdminOverview() {
     const pendingInvoices = state.adminInvoices.filter((invoice) => invoice.status === "pending").length;
+    const pendingRequests = state.adminTranslationRequests.filter((request) => request.status === "pending").length;
     const metrics = [
       ["التعريبات", state.adminTranslations.length, "download", "translations"],
       ["المستخدمون", state.users.length, "user", "users"],
       ["فواتير معلقة", pendingInvoices, "receipt", "invoices"],
-      ["البلاغات", state.adminReports.length, "flag", "reports"],
+      ["طلبات تعريب", pendingRequests, "gamepad", "requests"],
     ];
     $("#admin-overview").replaceChildren(...metrics.map(([label, value, iconName, tab]) => {
       const card = make("button", "admin-metric");
@@ -1050,6 +1240,8 @@
     }));
     const invoiceTab = $('[data-admin-tab="invoices"]');
     setIconText(invoiceTab, "receipt", pendingInvoices ? `فواتير PayPal (${pendingInvoices})` : "فواتير PayPal");
+    const requestsTab = $('[data-admin-tab="requests"]');
+    setIconText(requestsTab, "gamepad", pendingRequests ? `طلبات التعريب (${pendingRequests})` : "طلبات التعريب");
   }
 
   function imageExtension(name) {
@@ -1650,6 +1842,70 @@
     }
   }
 
+  async function loadAdminTranslationRequests() {
+    if (state.user?.role !== "admin") return;
+    const result = await api("/api/admin/translation-requests");
+    state.adminTranslationRequests = result.requests || [];
+    renderAdminTranslationRequests();
+    renderAdminOverview();
+  }
+
+  function renderAdminTranslationRequests() {
+    const list = $("#admin-requests");
+    if (!state.adminTranslationRequests.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد طلبات تعريب."));
+      return;
+    }
+    list.replaceChildren(...state.adminTranslationRequests.map((request) => {
+      const row = make("article", "admin-row localization-request-row");
+      const main = make("div", "request-admin-main");
+      const image = make("img", "request-admin-image");
+      image.src = request.imageUrl;
+      image.alt = request.gameName;
+      image.loading = "lazy";
+      image.tabIndex = 0;
+      image.addEventListener("click", () => openLightbox(request.imageUrl, request.gameName));
+      image.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") openLightbox(request.imageUrl, request.gameName);
+      });
+      const info = make("div", "admin-row-info");
+      info.append(
+        make("strong", "", request.gameName),
+        make("span", "", `${request.user.username} · #${request.user.id} · ${formatDateTime(request.createdAt)}`),
+        make("span", `tier-pill ${request.user.tier}`, tierLabel(request.user.tier)),
+        make("p", "request-admin-reason", request.reason),
+        make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)),
+      );
+      main.append(image, info);
+      const actions = make("div", "row-actions request-admin-actions");
+      if (request.status === "pending") {
+        const approve = makeIconText("button", "button approve small", "موافقة", "check");
+        const reject = makeIconText("button", "button danger small", "رفض", "close");
+        approve.type = reject.type = "button";
+        approve.addEventListener("click", () => reviewTranslationRequest(request, "approve"));
+        reject.addEventListener("click", () => reviewTranslationRequest(request, "reject"));
+        actions.append(approve, reject);
+      }
+      row.append(main, actions);
+      return row;
+    }));
+  }
+
+  async function reviewTranslationRequest(request, action) {
+    const verb = action === "approve" ? "الموافقة على" : "رفض";
+    if (!confirm(`تأكيد ${verb} طلب تعريب ${request.gameName}؟`)) return;
+    try {
+      await api(`/api/admin/translation-requests/${request.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      });
+      await loadAdminTranslationRequests();
+      toast(action === "approve" ? "تمت الموافقة على الطلب." : "تم رفض الطلب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
   function renderUsers() {
     const list = $("#admin-users");
     if (!state.users.length) {
@@ -1676,10 +1932,18 @@
       days.setAttribute("aria-label", "عدد الأيام");
       const grant = makeIconText("button", "button primary small", "منح VIP", "crown");
       const revoke = makeIconText("button", "button danger small", "إلغاء VIP", "trash");
-      grant.type = revoke.type = "button";
+      const resetPassword = makeIconText("button", "button ghost small", "إعادة تعيين كلمة المرور", "key");
+      const deleteUser = makeIconText("button", "button danger small", "مسح الحساب", "trash");
+      grant.type = revoke.type = resetPassword.type = deleteUser.type = "button";
       grant.addEventListener("click", () => updateMembership(user.id, "grant", Number(days.value)));
       revoke.addEventListener("click", () => updateMembership(user.id, "revoke"));
-      actions.append(days, grant, revoke);
+      resetPassword.addEventListener("click", () => resetUserPassword(user));
+      deleteUser.disabled = user.tier === "vip" || user.tier === "owner";
+      deleteUser.title = user.tier === "vip"
+        ? "الحذف متوقف لحماية عضوية VIP من الضياع"
+        : user.tier === "owner" ? "لا يمكن حذف حساب Owner" : "مسح الحساب نهائيًا";
+      deleteUser.addEventListener("click", () => deleteUserAccount(user));
+      actions.append(days, grant, revoke, resetPassword, deleteUser);
       row.append(info, actions);
       return row;
     }));
@@ -1690,6 +1954,49 @@
       await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ action, days }) });
       await loadAdminData();
       toast(action === "grant" ? "تم منح VIP." : "تم إلغاء VIP.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function resetUserPassword(user) {
+    const password = prompt(`اكتب كلمة مرور مؤقتة قوية للحساب ${user.username} · #${user.id}:`, "");
+    if (password === null) return;
+    if (password.length < 10 || password.length > 128 || !/\p{L}/u.test(password) || !/\p{N}/u.test(password) || !/[^\p{L}\p{N}\s]/u.test(password)) {
+      toast("استخدم 10 أحرف على الأقل تتضمن حروفًا وأرقامًا ورمزًا خاصًا.", "error");
+      return;
+    }
+    if (!confirm("سيتم تغيير كلمة المرور وإلغاء كل الجلسات القديمة، وستبقى عضوية VIP كما هي. هل تريد المتابعة؟")) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "reset_password", password }),
+      });
+      if (user.id === state.user?.id) {
+        clearSession();
+        closeDialog("admin-dialog");
+        toast("تم تغيير كلمة المرور وإلغاء الجلسات. سجّل الدخول من جديد.");
+        return;
+      }
+      await loadAdminData();
+      toast("تم تغيير كلمة المرور وإلغاء جلسات الحساب دون تغيير VIP.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteUserAccount(user) {
+    if (user.tier === "vip" || user.tier === "owner") return;
+    const confirmationUsername = prompt(`لحذف الحساب نهائيًا، اكتب اسم المستخدم كما هو:\n${user.username}`, "");
+    if (confirmationUsername === null) return;
+    if (!confirm(`سيُحذف الحساب #${user.id} وتعليقاته وسجلاته نهائيًا. هل أنت متأكد؟`)) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmationUsername }),
+      });
+      await loadAdminData();
+      toast("تم مسح الحساب.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1774,6 +2081,7 @@
     if (event.target === dialog) dialog.close();
   }));
   $$('[data-auth-tab]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTab)));
+  $$('[data-auth-tab-link]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTabLink)));
   $$('[data-admin-tab]').forEach((button) => button.addEventListener("click", () => setAdminTab(button.dataset.adminTab)));
   $$('[data-invoice-filter]').forEach((button) => button.addEventListener("click", () => {
     state.adminInvoiceFilter = button.dataset.invoiceFilter;
@@ -1782,14 +2090,20 @@
   }));
   $("#login-form").addEventListener("submit", (event) => submitAuth(event, "login"));
   $("#register-form").addEventListener("submit", (event) => submitAuth(event, "register"));
+  $("#recover-form").addEventListener("submit", submitRecovery);
   $("#account-button").addEventListener("click", openAccount);
   $("#notification-button").addEventListener("click", openNotifications);
   $("#privacy-button").addEventListener("click", () => showDialog("privacy-dialog"));
+  $("#translation-request-button").addEventListener("click", () => openTranslationRequest().catch((error) => toast(error.message, "error")));
   $("#vip-support-button").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
   $("#invoice-shortcut").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
   $("#admin-button").addEventListener("click", openAdmin);
   $("#logout-button").addEventListener("click", logout);
   $("#account-form").addEventListener("submit", updateAccount);
+  $("#recovery-code-form").addEventListener("submit", generateRecoveryCode);
+  $("#copy-recovery-code").addEventListener("click", copyRecoveryCode);
+  $("#confirm-recovery-code").addEventListener("click", confirmRecoveryCodeSaved);
+  $("#translation-request-form").addEventListener("submit", submitTranslationRequest);
   $("#translation-form").addEventListener("submit", saveTranslation);
   $("#news-form").addEventListener("submit", saveNews);
   $("#invoice-form").addEventListener("submit", submitPaypalInvoice);
@@ -1798,6 +2112,7 @@
   $("#translation-form").elements.cover.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
   $("#translation-form").elements.gallery.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
   $("#news-form").elements.newsCover.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
+  $("#translation-request-form").elements.requestImage.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
   $("#translation-form").elements.downloadFile.addEventListener("change", (event) => {
     updateFileLabel(event.currentTarget);
     syncDownloadFields();
@@ -1815,13 +2130,18 @@
 
   setIconText($("#logout-button"), "logout", "خروج");
   setIconText($("#account-form button[type=submit]"), "save", "حفظ");
+  setIconText($("#recovery-code-form button[type=submit]"), "key", "إنشاء رمز استرداد جديد");
+  setIconText($("#copy-recovery-code"), "copy", "نسخ الرمز");
+  setIconText($("#translation-request-button"), "gamepad", "طلبات التعريب");
+  setIconText($("#translation-request-form button[type=submit]"), "gamepad", "إرسال الطلب");
   setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
   setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
   setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
-  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", reports: "flag" };
+  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag" };
   $$('[data-admin-tab]').forEach((button) => setIconText(button, adminTabIcons[button.dataset.adminTab], button.textContent));
   $$(".file-button").forEach((node) => setIconText(node, "upload", node.textContent));
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
+  enhancePasswordInputs();
   syncDownloadFields();
   updateHeader();
   renderCatalog();
