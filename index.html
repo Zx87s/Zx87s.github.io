@@ -9,8 +9,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://ta3reebat-memberships.zx87s.chatgpt.site; connect-src 'self' https://ta3reebat-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
     <title>تعريبات Zx87s</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=17" />
-    <script src="./app.js?v=17" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=18" />
+    <script src="./app.js?v=18" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -20,6 +20,7 @@
           <a href="#news">الأخبار</a>
           <a href="#library">المكتبة</a>
           <a href="#vip">VIP</a>
+          <button class="nav-action" id="translation-request-button" type="button">طلبات التعريب</button>
           <a class="discord-link" href="https://discord.com/invite/Abc3unQS3m" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
             <span>مجتمع</span>
@@ -114,19 +115,42 @@
         <div class="modal-tabs">
           <button class="tab is-active" type="button" data-auth-tab="login">تسجيل الدخول</button>
           <button class="tab" type="button" data-auth-tab="register">حساب جديد</button>
+          <button class="tab" type="button" data-auth-tab="recover">نسيت كلمة المرور</button>
         </div>
         <form id="login-form" class="form-grid">
           <label>الاسم أو البريد<input name="identifier" autocomplete="username" required /></label>
           <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required /></label>
           <button class="button primary wide" type="submit">دخول</button>
+          <button class="text-action auth-recover-link" type="button" data-auth-tab-link="recover">نسيت كلمة المرور؟</button>
         </form>
         <form id="register-form" class="form-grid" hidden>
           <label>اسم المستخدم<input name="username" autocomplete="username" minlength="3" maxlength="30" required /></label>
           <label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required /></label>
-          <label>كلمة المرور<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+          <label>كلمة المرور<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></label>
           <button class="button primary wide" type="submit">إنشاء الحساب</button>
         </form>
+        <form id="recover-form" class="form-grid" hidden>
+          <p class="recovery-intro">أدخل رقم الحساب واسم المستخدم ورمز الاسترداد السري الذي حفظته عند إنشاء الحساب.</p>
+          <label>رقم الحساب<input name="accountId" type="number" inputmode="numeric" min="1" placeholder="مثال: 27" required /></label>
+          <label>اسم المستخدم<input name="username" autocomplete="username" minlength="3" maxlength="30" required /></label>
+          <label>رمز الاسترداد<input name="recoveryCode" dir="ltr" autocomplete="off" spellcheck="false" placeholder="ZX87S-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required /></label>
+          <label>كلمة المرور الجديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required /></label>
+          <button class="button primary wide" type="submit">استرداد الحساب</button>
+          <p class="recovery-help">إذا فقدت الرمز، تواصل مع Owner عبر مجتمع Discord للتحقق من ملكية الحساب ثم تعيين كلمة مرور مؤقتة.</p>
+        </form>
         <p class="form-message" id="auth-message" role="status"></p>
+      </section>
+    </dialog>
+
+    <dialog id="recovery-code-dialog" class="modal">
+      <section class="modal-card narrow recovery-code-card" aria-labelledby="recovery-code-title">
+        <h2 id="recovery-code-title">احفظ رمز الاسترداد</h2>
+        <p>هذا الرمز هو وسيلتك الآمنة لاسترداد الحساب دون بريد إلكتروني. سيظهر الآن فقط، ولا تشاركه مع أي شخص.</p>
+        <code id="recovery-code-value" dir="ltr"></code>
+        <div class="recovery-code-actions">
+          <button class="button ghost" id="copy-recovery-code" type="button">نسخ الرمز</button>
+          <button class="button primary" id="confirm-recovery-code" type="button">حفظته في مكان آمن</button>
+        </div>
       </section>
     </dialog>
 
@@ -141,10 +165,19 @@
             <label>اسم المستخدم<input name="username" minlength="3" maxlength="30" required /></label>
             <label>البريد الإلكتروني<input name="email" type="email" required /></label>
             <label>كلمة المرور الحالية<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
-            <label>كلمة مرور جديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" /></label>
+            <label>كلمة مرور جديدة<input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" /></label>
             <button class="button primary" type="submit">حفظ</button>
           </form>
           <p class="form-message" id="account-message" role="status"></p>
+        </details>
+        <details class="account-edit recovery-settings">
+          <summary>استرداد الحساب</summary>
+          <p class="recovery-status" id="recovery-status"></p>
+          <form id="recovery-code-form" class="form-grid">
+            <label>كلمة المرور الحالية<input name="currentPassword" type="password" autocomplete="current-password" required /></label>
+            <button class="button ghost" type="submit">إنشاء رمز استرداد جديد</button>
+          </form>
+          <p class="form-message" id="recovery-message" role="status"></p>
         </details>
         <section class="history-section"><h3>التعريبات المحمّلة</h3><div id="download-history" class="history-list"></div></section>
         <section class="history-section"><h3>طلبات VIP</h3><div id="account-invoice-history" class="invoice-history"></div></section>
@@ -156,6 +189,21 @@
         <button class="modal-close" data-close="notifications-dialog" aria-label="إغلاق">×</button>
         <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>الإشعارات</h2></div></div>
         <div class="notifications-list" id="notifications-list" aria-live="polite"></div>
+      </section>
+    </dialog>
+
+    <dialog id="translation-request-dialog" class="modal">
+      <section class="modal-card request-card" aria-labelledby="translation-request-title">
+        <button class="modal-close" data-close="translation-request-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">شارك اقتراحك</p><h2 id="translation-request-title">طلبات التعريب</h2></div></div>
+        <form id="translation-request-form" class="form-grid">
+          <label>اسم اللعبة<input name="gameName" maxlength="120" required /></label>
+          <label>لماذا تستحق هذه اللعبة التعريب؟<textarea name="reason" rows="5" minlength="15" maxlength="1500" required></textarea></label>
+          <label class="file-field">صورة اللعبة من جهازك<span class="file-picker"><span data-file-label="requestImage">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="requestImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required /></span></label>
+          <button class="button primary" type="submit">إرسال الطلب</button>
+        </form>
+        <p class="form-message" id="translation-request-message" role="status"></p>
+        <section class="request-history-section"><h3>طلباتي</h3><div id="translation-request-history" class="request-history"></div></section>
       </section>
     </dialog>
 
@@ -172,6 +220,7 @@
           <button class="tab" type="button" data-admin-tab="news">الأخبار</button>
           <button class="tab" type="button" data-admin-tab="invoices">فواتير PayPal</button>
           <button class="tab" type="button" data-admin-tab="users">المستخدمون</button>
+          <button class="tab" type="button" data-admin-tab="requests">طلبات التعريب</button>
           <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
         </div>
         <section id="admin-translations-panel">
@@ -219,6 +268,10 @@
           <div class="admin-list invoice-admin-list" id="admin-invoices"></div>
         </section>
         <section id="admin-users-panel" hidden><div class="admin-list" id="admin-users"></div></section>
+        <section id="admin-requests-panel" hidden>
+          <div class="admin-panel-heading"><div><p class="eyebrow">اقتراحات الأعضاء</p><h3>طلبات التعريب</h3></div></div>
+          <div class="admin-list" id="admin-requests"></div>
+        </section>
         <section id="admin-reports-panel" hidden><div class="admin-list" id="admin-reports"></div></section>
       </section>
     </dialog>
@@ -255,7 +308,7 @@
           <section>
             <h3>البيانات التي نجمعها</h3>
             <p>عند إنشاء حساب نطلب اسم المستخدم والبريد الإلكتروني وكلمة المرور. لا تُحفظ كلمة المرور بصورتها الأصلية، بل تُخزن كقيمة تحقق أحادية الاتجاه مع قيمة عشوائية خاصة بها. ونحفظ أيضًا رقم الحساب، فئة العضوية، تاريخ إنشاء الحساب والجلسات النشطة.</p>
-            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
+            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، وطلبات التعريب وصور الألعاب المرفوعة معها. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
           </section>
 
           <section>
@@ -270,7 +323,7 @@
 
           <section>
             <h3>الجلسات وحماية الحساب</h3>
-            <p>يحتفظ المتصفح برمز جلسة لتبقى مسجلًا للدخول، بينما تُحفظ في الخادم نسخة مجزأة منه فقط. يعمل الموقع عبر اتصال HTTPS ويطبق ضوابط للصلاحيات والطلبات ومعدل محاولات الدخول. ومع ذلك لا توجد خدمة عبر الإنترنت يمكن ضمان حمايتها بنسبة 100%، لذلك ننصح باستخدام كلمة مرور قوية ومختلفة وعدم مشاركتها مع أي شخص.</p>
+            <p>يحتفظ المتصفح برمز جلسة لتبقى مسجلًا للدخول، بينما تُحفظ في الخادم نسخة مجزأة منه فقط. يمنحك الموقع رمز استرداد عالي العشوائية يظهر لك مرة واحدة، ويُحفظ في الخادم كقيمة تحقق غير قابلة للقراءة. عند استخدامه لتغيير كلمة المرور يُلغى الرمز وكل الجلسات القديمة فورًا. يعمل الموقع عبر اتصال HTTPS ويطبق ضوابط للصلاحيات والطلبات ومعدل محاولات الدخول. ومع ذلك لا توجد خدمة عبر الإنترنت يمكن ضمان حمايتها بنسبة 100%، لذلك ننصح باستخدام كلمة مرور قوية ومختلفة وحفظ رمز الاسترداد دون مشاركته مع أي شخص.</p>
           </section>
 
           <section>
