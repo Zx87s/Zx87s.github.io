@@ -10,6 +10,11 @@
   const MAX_IMAGE_DIMENSION = 1920;
   const MAX_TRANSLATION_FILE_BYTES = 512 * 1024 * 1024;
   const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  const PUBLIC_CACHE_TTL = 24 * 60 * 60 * 1000;
+  const PUBLIC_CACHE_KEYS = { catalog: "zx87s_catalog_v1", news: "zx87s_news_v1" };
+  const DETAIL_CACHE_TTL = 45 * 1000;
+  const detailCache = new Map();
+  const detailRequests = new Map();
   const state = {
     token: localStorage.getItem(TOKEN_KEY) || "",
     user: null,
@@ -32,6 +37,7 @@
     notifications: [],
     unreadNotifications: 0,
     detailRequest: 0,
+    activeTranslationReference: null,
     editing: null,
     editingNews: null,
     afterAuth: null,
@@ -179,6 +185,8 @@
   }
 
   function setSession(result) {
+    detailCache.clear();
+    detailRequests.clear();
     if (result.token) {
       state.token = result.token;
       localStorage.setItem(TOKEN_KEY, result.token);
@@ -189,6 +197,8 @@
   }
 
   function clearSession() {
+    detailCache.clear();
+    detailRequests.clear();
     state.token = "";
     state.user = null;
     state.downloads = [];
@@ -327,6 +337,35 @@
       .trim();
   }
 
+  function readPublicCache(key) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || "null");
+      if (!cached || !Array.isArray(cached.items) || Date.now() - Number(cached.savedAt) > PUBLIC_CACHE_TTL) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return cached.items;
+    } catch {
+      localStorage.removeItem(key);
+      return null;
+    }
+  }
+
+  function writePublicCache(key, items) {
+    try {
+      localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), items }));
+    } catch {
+      // Public cache is an optional speed optimization.
+    }
+  }
+
+  function hydratePublicCache() {
+    const catalog = readPublicCache(PUBLIC_CACHE_KEYS.catalog);
+    const news = readPublicCache(PUBLIC_CACHE_KEYS.news);
+    if (catalog) state.catalog = catalog;
+    if (news) state.news = news;
+  }
+
   function formatDate(value) {
     if (!value) return "—";
     const date = new Date(value);
@@ -410,9 +449,13 @@
       return;
     }
     const item = state.catalog.find((entry) => entry.slug === slug);
-    if (!item) return;
-    if (state.activeTranslation?.id === item.id && $("#translation-dialog").open) return;
-    openTranslation(item.id, { syncUrl: false });
+    const activeReference = state.activeTranslationReference;
+    if ($("#translation-dialog").open && (
+      state.activeTranslation?.slug === slug
+      || activeReference === slug
+      || (item && activeReference === String(item.id))
+    )) return;
+    openTranslation(item?.id || slug, { syncUrl: false });
   }
 
   function translationAction(item) {
@@ -426,9 +469,10 @@
     try {
       const result = await api(`/api/news${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.news = Array.isArray(result.news) ? result.news : [];
+      writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
       renderNews();
     } catch (error) {
-      $("#news-grid").replaceChildren(make("p", "empty-row", error.message));
+      if (!state.news.length) $("#news-grid").replaceChildren(make("p", "empty-row", error.message));
     }
   }
 
@@ -466,10 +510,13 @@
     try {
       const result = await api(`/api/translations${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.catalog = Array.isArray(result.translations) ? result.translations : [];
+      writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
       renderCatalog();
     } catch (error) {
-      $("#results-status").textContent = error.message;
-      $("#empty-state").hidden = false;
+      if (!state.catalog.length) {
+        $("#results-status").textContent = error.message;
+        $("#empty-state").hidden = false;
+      }
     }
   }
 
@@ -516,6 +563,7 @@
       event.stopPropagation();
       openTranslation(item.id);
     });
+    titleLink.addEventListener("focus", () => prefetchTranslation(item.id), { once: true });
     heading.append(titleLink);
     top.append(heading);
     const stats = make("div", "card-stats");
@@ -542,19 +590,53 @@
       if (event.target.closest("button, a")) return;
       openTranslation(item.id);
     });
+    card.addEventListener("pointerenter", () => prefetchTranslation(item.id), { once: true });
     return card;
   }
 
-  async function openTranslation(id, { syncUrl = true } = {}) {
-    const catalogItem = state.catalog.find((item) => item.id === id);
+  function cachedTranslation(reference) {
+    const entry = detailCache.get(String(reference));
+    if (!entry || Date.now() - entry.savedAt > DETAIL_CACHE_TTL) {
+      detailCache.delete(String(reference));
+      return null;
+    }
+    return entry.data;
+  }
+
+  async function fetchTranslationDetail(reference) {
+    const key = String(reference);
+    const cached = cachedTranslation(key);
+    if (cached) return cached;
+    if (detailRequests.has(key)) return detailRequests.get(key);
+    const request = api(`/api/translations/${encodeURIComponent(key)}`)
+      .then((result) => {
+        const entry = { savedAt: Date.now(), data: result };
+        detailCache.set(key, entry);
+        if (result.translation?.id) detailCache.set(String(result.translation.id), entry);
+        if (result.translation?.slug) detailCache.set(result.translation.slug, entry);
+        return result;
+      })
+      .finally(() => detailRequests.delete(key));
+    detailRequests.set(key, request);
+    return request;
+  }
+
+  function prefetchTranslation(reference) {
+    if (navigator.connection?.saveData) return;
+    fetchTranslationDetail(reference).catch(() => {});
+  }
+
+  async function openTranslation(reference, { syncUrl = true } = {}) {
+    const catalogItem = state.catalog.find((item) => item.id === reference || item.slug === reference);
     if (syncUrl && catalogItem) setTranslationRoute(catalogItem);
+    state.activeTranslationReference = String(reference);
     const requestId = ++state.detailRequest;
     state.replyingTo = null;
     const detail = $("#translation-detail");
     detail.replaceChildren(make("p", "detail-loading", "جارٍ تحميل التعريب…"));
     showDialog("translation-dialog");
     try {
-      const result = await api(`/api/translations/${id}`);
+      const result = await fetchTranslationDetail(reference);
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
       state.activeTranslation = result.translation;
       state.comments = Array.isArray(result.comments) ? result.comments : [];
@@ -1791,10 +1873,17 @@
         isPublished: values.get("isPublished") === "on",
       };
       const id = values.get("id");
-      await api(id ? `/api/admin/news/${id}` : "/api/admin/news", {
+      const result = await api(id ? `/api/admin/news/${id}` : "/api/admin/news", {
         method: id ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
+      const savedNews = result.news;
+      if (savedNews) {
+        state.news = state.news.filter((post) => post.id !== savedNews.id);
+        if (savedNews.isPublished) state.news.unshift(savedNews);
+        writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+        renderNews();
+      }
       recordSaved = true;
       resetNewsForm();
       $("#news-message").textContent = "تم حفظ الخبر.";
@@ -1861,6 +1950,9 @@
     if (!confirm(`حذف خبر «${post.title}»؟`)) return;
     try {
       await api(`/api/admin/news/${post.id}`, { method: "DELETE" });
+      state.news = state.news.filter((item) => item.id !== post.id);
+      writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+      renderNews();
       if (state.editingNews?.id === post.id) resetNewsForm();
       await Promise.all([loadAdminData(), loadNews(true), loadNotifications()]);
       toast("تم حذف الخبر.");
@@ -1909,6 +2001,10 @@
         reject.addEventListener("click", () => reviewPaypalInvoice(invoice, "reject"));
         actions.append(approve, reject);
       }
+      const remove = makeIconText("button", "button danger small", "حذف الفاتورة", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", () => deletePaypalInvoice(invoice));
+      actions.append(remove);
       row.append(main, actions);
       return row;
     }));
@@ -1930,6 +2026,19 @@
       });
       await loadAdminData();
       toast(action === "approve" ? "تمت الموافقة وتفعيل VIP لمدة 30 يومًا." : "تم رفض الفاتورة.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deletePaypalInvoice(invoice) {
+    if (!confirm(`حذف فاتورة PayPal رقم ${invoice.invoiceNumber} من السجل؟\nلن تتغير عضوية VIP الحالية للحساب.`)) return;
+    try {
+      await api(`/api/admin/paypal-invoices/${invoice.id}`, { method: "DELETE" });
+      state.adminInvoices = state.adminInvoices.filter((item) => item.id !== invoice.id);
+      renderAdminInvoices();
+      renderAdminOverview();
+      toast("تم حذف الفاتورة دون تغيير عضوية المستخدم.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1979,6 +2088,10 @@
         reject.addEventListener("click", () => reviewTranslationRequest(request, "reject"));
         actions.append(approve, reject);
       }
+      const remove = makeIconText("button", "button danger small", "حذف الطلب", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", () => deleteTranslationRequest(request));
+      actions.append(remove);
       row.append(main, actions);
       return row;
     }));
@@ -1994,6 +2107,19 @@
       });
       await loadAdminTranslationRequests();
       toast(action === "approve" ? "تمت الموافقة على الطلب." : "تم رفض الطلب.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteTranslationRequest(request) {
+    if (!confirm(`حذف طلب تعريب «${request.gameName}» نهائيًا؟`)) return;
+    try {
+      await api(`/api/admin/translation-requests/${request.id}`, { method: "DELETE" });
+      state.adminTranslationRequests = state.adminTranslationRequests.filter((item) => item.id !== request.id);
+      renderAdminTranslationRequests();
+      renderAdminOverview();
+      toast("تم حذف طلب التعريب.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -2124,7 +2250,7 @@
       );
       info.append(title, author, make("p", "reported-comment", report.body));
       const actions = make("div", "row-actions");
-      const dismiss = makeIconText("button", "button ghost small", "إغلاق البلاغ", "flag");
+      const dismiss = makeIconText("button", "button danger small", "حذف البلاغ", "trash");
       const remove = makeIconText("button", "button danger small", "حذف التعليق", "trash");
       dismiss.type = remove.type = "button";
       dismiss.addEventListener("click", () => dismissReports(report.commentId));
@@ -2136,10 +2262,13 @@
   }
 
   async function dismissReports(commentId) {
+    if (!confirm("حذف جميع البلاغات المرتبطة بهذا التعليق؟ لن يُحذف التعليق نفسه.")) return;
     try {
       await api(`/api/comments/${commentId}/reports`, { method: "DELETE" });
-      await loadAdminReports();
-      toast("تم إغلاق البلاغ.");
+      state.adminReports = state.adminReports.filter((report) => report.commentId !== commentId);
+      renderAdminReports();
+      renderAdminOverview();
+      toast("تم حذف البلاغ.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -2214,6 +2343,7 @@
   $("#translation-dialog").addEventListener("close", () => {
     state.detailRequest += 1;
     state.activeTranslation = null;
+    state.activeTranslationReference = null;
     state.comments = [];
     state.replyingTo = null;
     document.title = "تعريبات Zx87s";
@@ -2238,8 +2368,11 @@
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
   enhancePasswordInputs();
   syncDownloadFields();
+  hydratePublicCache();
   updateHeader();
   renderCatalog();
+  renderNews();
+  syncTranslationFromLocation();
   window.setInterval(() => {
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
   }, 60_000);
