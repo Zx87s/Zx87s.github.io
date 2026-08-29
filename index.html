@@ -9,8 +9,9 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://ta3reebat-memberships.zx87s.chatgpt.site; connect-src 'self' https://ta3reebat-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
     <title>تعريبات Zx87s</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=18" />
-    <script src="./app.js?v=18" defer></script>
+    <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
+    <link rel="stylesheet" href="./styles.css?v=20" />
+    <script src="./app.js?v=20" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -45,10 +46,6 @@
             <p class="eyebrow">مكتبة تعريبات Zx87s</p>
             <h1>التعريب الذي<br /><span>تبحث عنه.</span></h1>
             <p class="hero-description">تعريبات عربية للألعاب، مجانية ومخصصة لأعضاء VIP.</p>
-            <label class="search-box" for="catalog-search">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
-              <input id="catalog-search" type="search" autocomplete="off" placeholder="ابحث باسم اللعبة…" />
-            </label>
           </div>
           <aside class="vip-card" id="vip">
             <span class="crown" aria-hidden="true">♛</span>
@@ -80,6 +77,10 @@
               <button class="filter" type="button" data-filter="vip">VIP</button>
             </div>
           </div>
+          <label class="search-box library-search" for="catalog-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+            <input id="catalog-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="ابحث باسم اللعبة…" />
+          </label>
           <p class="results-status" id="results-status" role="status"></p>
           <div class="catalog-grid" id="catalog-grid"></div>
           <div class="empty-state" id="empty-state" hidden><h3>لا توجد تعريبات</h3></div>
