@@ -142,14 +142,23 @@
   async function api(path, options = {}) {
     const headers = new Headers(options.headers || {});
     if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
-    if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
+    if (typeof options.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     let response;
-    try {
-      response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    } catch {
-      const error = new Error("تعذر الاتصال بالخادم. تحقق من الإنترنت ثم أعد المحاولة.");
-      error.status = 0;
-      throw error;
+    const method = String(options.method || "GET").toUpperCase();
+    const attempts = method === "GET" ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+        break;
+      } catch {
+        if (attempt + 1 < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          continue;
+        }
+        const error = new Error("تعذر الوصول إلى خادم الموقع. أعد المحاولة بعد لحظة.");
+        error.status = 0;
+        throw error;
+      }
     }
     let result = {};
     try { result = await response.json(); } catch { result = {}; }
@@ -357,6 +366,55 @@
     return state.user?.tier === "vip" || state.user?.tier === "owner";
   }
 
+  function translationUrl(itemOrSlug, canonical = true) {
+    const slug = typeof itemOrSlug === "string" ? itemOrSlug : itemOrSlug?.slug;
+    const url = canonical ? new URL("https://zx87s.github.io/") : new URL(location.href);
+    url.searchParams.set("game", slug);
+    url.hash = "";
+    return url;
+  }
+
+  function setTranslationRoute(item) {
+    if (!item?.slug) return;
+    history.pushState({ translation: item.slug }, "", translationUrl(item, false));
+  }
+
+  function clearTranslationRoute() {
+    const url = new URL(location.href);
+    if (!url.searchParams.has("game")) return;
+    url.searchParams.delete("game");
+    history.replaceState({}, "", url);
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const input = make("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.append(input);
+    input.select();
+    const copied = document.execCommand("copy");
+    input.remove();
+    if (!copied) throw new Error("تعذر نسخ الرابط.");
+  }
+
+  function syncTranslationFromLocation() {
+    const slug = new URL(location.href).searchParams.get("game");
+    if (!slug) {
+      if ($("#translation-dialog").open) closeDialog("translation-dialog");
+      return;
+    }
+    const item = state.catalog.find((entry) => entry.slug === slug);
+    if (!item) return;
+    if (state.activeTranslation?.id === item.id && $("#translation-dialog").open) return;
+    openTranslation(item.id, { syncUrl: false });
+  }
+
   function translationAction(item) {
     if (item.access !== "vip") return { label: "تنزيل التعريب", icon: "download", locked: false };
     return canAccessVip()
@@ -364,9 +422,9 @@
       : { label: "تنزيل التعريب", icon: "download", locked: true };
   }
 
-  async function loadNews() {
+  async function loadNews(fresh = false) {
     try {
-      const result = await api("/api/news");
+      const result = await api(`/api/news${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.news = Array.isArray(result.news) ? result.news : [];
       renderNews();
     } catch (error) {
@@ -388,6 +446,8 @@
         image.src = post.coverUrl;
         image.alt = post.title;
         image.loading = "lazy";
+        image.decoding = "async";
+        image.fetchPriority = "low";
         image.addEventListener("error", () => image.remove(), { once: true });
         card.append(image);
       }
@@ -402,9 +462,9 @@
     }));
   }
 
-  async function loadCatalog() {
+  async function loadCatalog(fresh = false) {
     try {
-      const result = await api("/api/translations");
+      const result = await api(`/api/translations${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.catalog = Array.isArray(result.translations) ? result.translations : [];
       renderCatalog();
     } catch (error) {
@@ -432,9 +492,6 @@
   function makeCatalogCard(item) {
     const card = make("article", "catalog-card");
     card.dataset.access = item.access;
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `عرض تفاصيل ${item.title}`);
     if (item.access === "vip" && !canAccessVip()) card.classList.add("is-vip-dimmed");
     const cover = make("div", "cover");
     cover.append(make("span", "type-badge", item.access === "vip" ? "VIP" : "مجاني"));
@@ -444,12 +501,23 @@
       image.src = item.coverUrl;
       image.alt = `غلاف ${item.title}`;
       image.loading = "lazy";
+      image.decoding = "async";
+      image.fetchPriority = "low";
       image.addEventListener("error", () => image.remove(), { once: true });
       cover.prepend(image);
     }
     const body = make("div", "card-body");
     const top = make("div", "card-title-row");
-    top.append(make("h3", "", item.title));
+    const heading = make("h3");
+    const titleLink = make("a", "card-title-link", item.title);
+    titleLink.href = translationUrl(item).toString();
+    titleLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTranslation(item.id);
+    });
+    heading.append(titleLink);
+    top.append(heading);
     const stats = make("div", "card-stats");
     stats.append(
       makeIconText("span", "stat-line downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
@@ -470,18 +538,16 @@
     });
     body.append(button);
     card.append(cover, body);
-    card.addEventListener("click", () => openTranslation(item.id));
-    card.addEventListener("keydown", (event) => {
-      if (event.target !== card) return;
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        openTranslation(item.id);
-      }
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button, a")) return;
+      openTranslation(item.id);
     });
     return card;
   }
 
-  async function openTranslation(id) {
+  async function openTranslation(id, { syncUrl = true } = {}) {
+    const catalogItem = state.catalog.find((item) => item.id === id);
+    if (syncUrl && catalogItem) setTranslationRoute(catalogItem);
     const requestId = ++state.detailRequest;
     state.replyingTo = null;
     const detail = $("#translation-detail");
@@ -492,6 +558,7 @@
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
       state.activeTranslation = result.translation;
       state.comments = Array.isArray(result.comments) ? result.comments : [];
+      document.title = `${state.activeTranslation.title} | تعريبات Zx87s`;
       renderTranslationDetail();
     } catch (error) {
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
@@ -511,6 +578,8 @@
       const image = make("img");
       image.src = item.coverUrl;
       image.alt = `صورة ${item.title}`;
+      image.decoding = "async";
+      image.fetchPriority = "high";
       cover.append(image);
     }
     const info = make("div", "detail-info");
@@ -533,7 +602,19 @@
     download.setAttribute("aria-disabled", action.locked ? "true" : "false");
     download.type = "button";
     download.addEventListener("click", () => downloadTranslation(item, download));
-    info.append(download);
+    const copyLink = makeIconText("button", "button ghost copy-translation-link", "نسخ رابط التعريب", "copy");
+    copyLink.type = "button";
+    copyLink.addEventListener("click", async () => {
+      try {
+        await copyText(translationUrl(item).toString());
+        toast("تم نسخ رابط التعريب.");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    });
+    const detailActions = make("div", "detail-actions");
+    detailActions.append(download, copyLink);
+    info.append(detailActions);
     hero.append(cover, info);
     fragment.append(hero);
 
@@ -554,6 +635,8 @@
         image.src = url;
         image.alt = `${item.title} - صورة ${index + 1}`;
         image.loading = "lazy";
+        image.decoding = "async";
+        image.fetchPriority = "low";
         button.append(image);
         button.addEventListener("click", () => openLightbox(url, image.alt));
         itemNode.append(button);
@@ -1071,11 +1154,19 @@
       const selected = form.elements.requestImage.files?.[0];
       if (!selected) throw new Error("اختر صورة اللعبة من جهازك.");
       const prepared = await prepareImage(selected);
-      const body = new FormData();
-      body.append("gameName", form.elements.gameName.value);
-      body.append("reason", form.elements.reason.value);
-      body.append("image", prepared, prepared.name);
-      await api("/api/translation-requests", { method: "POST", body });
+      const metadata = new TextEncoder().encode(JSON.stringify({
+        gameName: form.elements.gameName.value,
+        reason: form.elements.reason.value,
+      }));
+      if (metadata.byteLength > 12 * 1024) throw new Error("بيانات الطلب طويلة جدًا.");
+      const metadataLength = new Uint8Array(4);
+      new DataView(metadataLength.buffer).setUint32(0, metadata.byteLength);
+      const body = new Blob([metadataLength, metadata, prepared], { type: "application/octet-stream" });
+      await api("/api/translation-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body,
+      });
       form.reset();
       updateFileLabel(form.elements.requestImage);
       $("#translation-request-message").textContent = "تم إرسال الطلب إلى Owner للمراجعة.";
@@ -1345,9 +1436,11 @@
         onProgress?.(index + 1, selected.length, "prepare");
         const prepared = await prepareImage(selected[index]);
         onProgress?.(index + 1, selected.length, "upload");
-        const body = new FormData();
-        body.append("images", prepared, prepared.name);
-        const result = await api("/api/admin/uploads", { method: "POST", body });
+        const result = await api("/api/admin/uploads", {
+          method: "POST",
+          headers: { "Content-Type": prepared.type || "application/octet-stream" },
+          body: prepared,
+        });
         const saved = result.files?.[0];
         if (!saved?.key) throw new Error("لم يُرجع الخادم نتيجة صحيحة لرفع الصورة.");
         uploaded.push(saved);
@@ -1545,7 +1638,7 @@
       recordSaved = true;
       resetTranslationForm();
       $("#translation-message").textContent = "تم الحفظ.";
-      await Promise.all([loadAdminData(), loadCatalog()]);
+      await Promise.all([loadAdminData(), loadCatalog(true)]);
     } catch (error) {
       if (!recordSaved) {
         await Promise.all([cleanupImages(newKeys), cleanupTranslationFile(uploadedDownloadKey)]);
@@ -1663,7 +1756,7 @@
     try {
       await api(`/api/admin/translations/${item.id}`, { method: "DELETE" });
       if (state.editing?.id === item.id) resetTranslationForm();
-      await Promise.all([loadAdminData(), loadCatalog()]);
+      await Promise.all([loadAdminData(), loadCatalog(true)]);
       toast("تم حذف التعريب.");
     } catch (error) {
       toast(error.message, "error");
@@ -1705,7 +1798,7 @@
       recordSaved = true;
       resetNewsForm();
       $("#news-message").textContent = "تم حفظ الخبر.";
-      await Promise.all([loadAdminData(), loadNews(), loadNotifications()]);
+      await Promise.all([loadAdminData(), loadNews(true), loadNotifications()]);
     } catch (error) {
       if (!recordSaved && uploadedKey) await cleanupImages([uploadedKey]);
       $("#news-message").textContent = error.message;
@@ -1769,7 +1862,7 @@
     try {
       await api(`/api/admin/news/${post.id}`, { method: "DELETE" });
       if (state.editingNews?.id === post.id) resetNewsForm();
-      await Promise.all([loadAdminData(), loadNews(), loadNotifications()]);
+      await Promise.all([loadAdminData(), loadNews(true), loadNotifications()]);
       toast("تم حذف الخبر.");
     } catch (error) {
       toast(error.message, "error");
@@ -2062,7 +2155,7 @@
         state.comments = result.comments || [];
         renderTranslationDetail();
       }
-      await Promise.all([loadAdminReports(), loadCatalog()]);
+      await Promise.all([loadAdminReports(), loadCatalog(true)]);
       toast("تم حذف التعليق.");
     } catch (error) {
       toast(error.message, "error");
@@ -2123,6 +2216,8 @@
     state.activeTranslation = null;
     state.comments = [];
     state.replyingTo = null;
+    document.title = "تعريبات Zx87s";
+    clearTranslationRoute();
   });
   $("#image-dialog").addEventListener("close", () => {
     $("#lightbox-image").removeAttribute("src");
@@ -2148,5 +2243,6 @@
   window.setInterval(() => {
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
   }, 60_000);
-  Promise.all([loadCatalog(), loadNews(), restoreSession()]);
+  window.addEventListener("popstate", syncTranslationFromLocation);
+  Promise.all([loadCatalog(), loadNews(), restoreSession()]).then(syncTranslationFromLocation);
 })();
