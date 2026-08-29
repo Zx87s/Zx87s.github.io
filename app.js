@@ -10,8 +10,17 @@
   const MAX_IMAGE_DIMENSION = 1920;
   const MAX_TRANSLATION_FILE_BYTES = 512 * 1024 * 1024;
   const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  const DEFAULT_INTERFACE_SETTINGS = Object.freeze({
+    heroTitleScale: 100,
+    sectionTitleScale: 100,
+    cardTitleScale: 100,
+    bodyTextScale: 100,
+    sectionOrder: ["hero", "news", "library"],
+    showNews: true,
+    showVip: true,
+  });
   const PUBLIC_CACHE_TTL = 24 * 60 * 60 * 1000;
-  const PUBLIC_CACHE_KEYS = { catalog: "zx87s_catalog_v1", news: "zx87s_news_v1" };
+  const PUBLIC_CACHE_KEYS = { catalog: "zx87s_catalog_v1", news: "zx87s_news_v1", settings: "zx87s_settings_v1" };
   const DETAIL_CACHE_TTL = 45 * 1000;
   const detailCache = new Map();
   const detailRequests = new Map();
@@ -41,6 +50,8 @@
     editing: null,
     editingNews: null,
     afterAuth: null,
+    interfaceSettings: { ...DEFAULT_INTERFACE_SETTINGS, sectionOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder] },
+    interfaceDraftOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -79,6 +90,9 @@
     key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-3 3 3 3m-6 0 3 3"/>',
     gamepad: '<path d="M7 8h10a4 4 0 0 1 3.8 5.2l-1.2 4a2 2 0 0 1-3.3.9L14 16h-4l-2.3 2.1a2 2 0 0 1-3.3-.9l-1.2-4A4 4 0 0 1 7 8Z"/><path d="M7 12v3m-1.5-1.5h3M16 12h.01M18 14h.01"/>',
     copy: '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
+    layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
+    arrowUp: '<path d="m6 15 6-6 6 6"/>',
+    arrowDown: '<path d="m6 9 6 6 6-6"/>',
   };
 
   function icon(name) {
@@ -364,6 +378,86 @@
     const news = readPublicCache(PUBLIC_CACHE_KEYS.news);
     if (catalog) state.catalog = catalog;
     if (news) state.news = news;
+    try {
+      const cached = JSON.parse(localStorage.getItem(PUBLIC_CACHE_KEYS.settings) || "null");
+      if (cached?.settings && Date.now() - Number(cached.savedAt) <= PUBLIC_CACHE_TTL) {
+        state.interfaceSettings = normalizeInterfaceSettings(cached.settings);
+      }
+    } catch {
+      localStorage.removeItem(PUBLIC_CACHE_KEYS.settings);
+    }
+    applyInterfaceSettings(state.interfaceSettings);
+  }
+
+  function normalizeInterfaceSettings(value) {
+    const source = value && typeof value === "object" ? value : DEFAULT_INTERFACE_SETTINGS;
+    const number = (key, minimum, maximum) => {
+      const parsed = Number(source[key]);
+      return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum
+        ? parsed
+        : DEFAULT_INTERFACE_SETTINGS[key];
+    };
+    const order = Array.isArray(source.sectionOrder) ? source.sectionOrder.map(String) : [];
+    const validOrder = order.length === 3 && new Set(order).size === 3
+      && DEFAULT_INTERFACE_SETTINGS.sectionOrder.every((item) => order.includes(item));
+    return {
+      heroTitleScale: number("heroTitleScale", 70, 150),
+      sectionTitleScale: number("sectionTitleScale", 70, 150),
+      cardTitleScale: number("cardTitleScale", 65, 150),
+      bodyTextScale: number("bodyTextScale", 75, 135),
+      sectionOrder: validOrder ? order : [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
+      showNews: source.showNews !== false,
+      showVip: source.showVip !== false,
+    };
+  }
+
+  function cacheInterfaceSettings(settings) {
+    try {
+      localStorage.setItem(PUBLIC_CACHE_KEYS.settings, JSON.stringify({ savedAt: Date.now(), settings }));
+    } catch {
+      // The server remains the source of truth when browser storage is unavailable.
+    }
+  }
+
+  function applyInterfaceSettings(value) {
+    const settings = normalizeInterfaceSettings(value);
+    state.interfaceSettings = settings;
+    const root = document.documentElement.style;
+    const hero = settings.heroTitleScale / 100;
+    const section = settings.sectionTitleScale / 100;
+    root.setProperty("--body-font-size", `${(16 * settings.bodyTextScale / 100).toFixed(2)}px`);
+    root.setProperty("--hero-title-min", `${(3.2 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-title-fluid", `${(6 * hero).toFixed(3)}vw`);
+    root.setProperty("--hero-title-max", `${(5.6 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-mobile-min", `${(2.8 * hero).toFixed(3)}rem`);
+    root.setProperty("--hero-mobile-fluid", `${(15 * hero).toFixed(3)}vw`);
+    root.setProperty("--hero-mobile-max", `${(4.2 * hero).toFixed(3)}rem`);
+    root.setProperty("--section-title-min", `${(2 * section).toFixed(3)}rem`);
+    root.setProperty("--section-title-fluid", `${(4 * section).toFixed(3)}vw`);
+    root.setProperty("--section-title-max", `${(3 * section).toFixed(3)}rem`);
+    root.setProperty("--card-title-size", `${(1.02 * settings.cardTitleScale / 100).toFixed(3)}rem`);
+    root.setProperty("--preview-hero-size", `${(2 * hero).toFixed(3)}rem`);
+    root.setProperty("--preview-section-size", `${(1.45 * section).toFixed(3)}rem`);
+    const sections = { hero: $(".hero"), news: $("#news"), library: $("#library") };
+    settings.sectionOrder.forEach((key) => sections[key] && $("#top").append(sections[key]));
+    $("#news").hidden = !settings.showNews;
+    $("#vip").hidden = !settings.showVip;
+    const newsLink = $('.main-nav a[href="#news"]');
+    const vipLink = $('.main-nav a[href="#vip"]');
+    if (newsLink) newsLink.hidden = !settings.showNews;
+    if (vipLink) vipLink.hidden = !settings.showVip;
+  }
+
+  async function loadInterfaceSettings(fresh = false) {
+    try {
+      const result = await api(`/api/site-settings${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
+      const settings = normalizeInterfaceSettings(result.settings);
+      applyInterfaceSettings(settings);
+      cacheInterfaceSettings(settings);
+      if (state.user?.tier === "owner") renderInterfaceForm();
+    } catch (error) {
+      if (state.user?.tier === "owner") toast(error.message, "error");
+    }
   }
 
   function formatDate(value) {
@@ -1376,6 +1470,7 @@
       renderAdminReports();
       renderAdminInvoices();
       renderAdminTranslationRequests();
+      renderInterfaceForm();
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1389,6 +1484,120 @@
     $("#admin-users-panel").hidden = tab !== "users";
     $("#admin-requests-panel").hidden = tab !== "requests";
     $("#admin-reports-panel").hidden = tab !== "reports";
+    $("#admin-interface-panel").hidden = tab !== "interface";
+  }
+
+  const INTERFACE_SECTION_LABELS = {
+    hero: ["الواجهة الرئيسية", "layout"],
+    news: ["أخبار التعريبات", "news"],
+    library: ["مكتبة التعريبات", "download"],
+  };
+
+  function interfaceSettingsFromForm() {
+    const form = $("#interface-form");
+    return normalizeInterfaceSettings({
+      heroTitleScale: Number(form.elements.heroTitleScale.value),
+      sectionTitleScale: Number(form.elements.sectionTitleScale.value),
+      cardTitleScale: Number(form.elements.cardTitleScale.value),
+      bodyTextScale: Number(form.elements.bodyTextScale.value),
+      sectionOrder: [...state.interfaceDraftOrder],
+      showNews: form.elements.showNews.checked,
+      showVip: form.elements.showVip.checked,
+    });
+  }
+
+  function updateInterfaceScaleOutputs() {
+    $$('#interface-form input[type="range"]').forEach((input) => {
+      const output = $(`[data-scale-output="${input.name}"]`);
+      if (output) output.textContent = `${input.value}%`;
+    });
+  }
+
+  function renderInterfaceOrder() {
+    const list = $("#interface-order-list");
+    list.replaceChildren(...state.interfaceDraftOrder.map((key, index) => {
+      const row = make("div", "interface-order-row");
+      const label = make("span", "interface-order-name");
+      const [text, iconName] = INTERFACE_SECTION_LABELS[key];
+      const number = make("b", "", String(index + 1));
+      const labelText = makeIconText("span", "", text, iconName);
+      label.append(number, labelText);
+      const actions = make("span", "interface-order-actions");
+      const up = make("button");
+      const down = make("button");
+      up.type = down.type = "button";
+      up.title = "تحريك القسم للأعلى";
+      down.title = "تحريك القسم للأسفل";
+      up.setAttribute("aria-label", up.title);
+      down.setAttribute("aria-label", down.title);
+      up.append(icon("arrowUp"));
+      down.append(icon("arrowDown"));
+      up.disabled = index === 0;
+      down.disabled = index === state.interfaceDraftOrder.length - 1;
+      up.addEventListener("click", () => moveInterfaceSection(index, -1));
+      down.addEventListener("click", () => moveInterfaceSection(index, 1));
+      actions.append(up, down);
+      row.append(label, actions);
+      return row;
+    }));
+  }
+
+  function moveInterfaceSection(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= state.interfaceDraftOrder.length) return;
+    [state.interfaceDraftOrder[index], state.interfaceDraftOrder[target]] = [state.interfaceDraftOrder[target], state.interfaceDraftOrder[index]];
+    renderInterfaceOrder();
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }
+
+  function renderInterfaceForm(settings = state.interfaceSettings) {
+    const form = $("#interface-form");
+    if (!form) return;
+    const normalized = normalizeInterfaceSettings(settings);
+    form.elements.heroTitleScale.value = normalized.heroTitleScale;
+    form.elements.sectionTitleScale.value = normalized.sectionTitleScale;
+    form.elements.cardTitleScale.value = normalized.cardTitleScale;
+    form.elements.bodyTextScale.value = normalized.bodyTextScale;
+    form.elements.showNews.checked = normalized.showNews;
+    form.elements.showVip.checked = normalized.showVip;
+    state.interfaceDraftOrder = [...normalized.sectionOrder];
+    updateInterfaceScaleOutputs();
+    renderInterfaceOrder();
+  }
+
+  async function persistInterfaceSettings(settings) {
+    const form = $("#interface-form");
+    const submit = $('button[type="submit"]', form);
+    submit.disabled = true;
+    $("#interface-message").textContent = "جارٍ حفظ التخصيص…";
+    try {
+      const result = await api("/api/admin/site-settings", {
+        method: "PATCH",
+        body: JSON.stringify(settings),
+      });
+      const saved = normalizeInterfaceSettings(result.settings);
+      applyInterfaceSettings(saved);
+      cacheInterfaceSettings(saved);
+      renderInterfaceForm(saved);
+      $("#interface-message").textContent = "تم حفظ التخصيص وتطبيقه على الموقع.";
+      toast("تم تحديث الواجهة الرئيسية.");
+    } catch (error) {
+      $("#interface-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function saveInterfaceSettings(event) {
+    event.preventDefault();
+    await persistInterfaceSettings(interfaceSettingsFromForm());
+  }
+
+  async function resetInterfaceSettings() {
+    if (!confirm("استعادة أحجام الخطوط وترتيب الأقسام الافتراضي؟")) return;
+    renderInterfaceForm(DEFAULT_INTERFACE_SETTINGS);
+    applyInterfaceSettings(interfaceSettingsFromForm());
+    await persistInterfaceSettings(interfaceSettingsFromForm());
   }
 
   function renderAdminOverview() {
@@ -2329,6 +2538,15 @@
   $("#translation-form").addEventListener("submit", saveTranslation);
   $("#news-form").addEventListener("submit", saveNews);
   $("#invoice-form").addEventListener("submit", submitPaypalInvoice);
+  $("#interface-form").addEventListener("submit", saveInterfaceSettings);
+  $("#reset-interface").addEventListener("click", resetInterfaceSettings);
+  $$('#interface-form input[type="range"]').forEach((input) => input.addEventListener("input", () => {
+    updateInterfaceScaleOutputs();
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }));
+  $$('#interface-form input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
+    applyInterfaceSettings(interfaceSettingsFromForm());
+  }));
   $("#cancel-edit").addEventListener("click", resetTranslationForm);
   $("#cancel-news-edit").addEventListener("click", resetNewsForm);
   $("#translation-form").elements.cover.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
@@ -2362,7 +2580,7 @@
   setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
   setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
   setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
-  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag" };
+  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag", interface: "layout" };
   $$('[data-admin-tab]').forEach((button) => setIconText(button, adminTabIcons[button.dataset.adminTab], button.textContent));
   $$(".file-button").forEach((node) => setIconText(node, "upload", node.textContent));
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
@@ -2377,5 +2595,5 @@
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
   }, 60_000);
   window.addEventListener("popstate", syncTranslationFromLocation);
-  Promise.all([loadCatalog(), loadNews(), restoreSession()]).then(syncTranslationFromLocation);
+  Promise.all([loadInterfaceSettings(), loadCatalog(), loadNews(), restoreSession()]).then(syncTranslationFromLocation);
 })();
