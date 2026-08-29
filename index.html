@@ -12,8 +12,9 @@
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/translations" as="fetch" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/news" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=22" />
-    <script src="./app.js?v=22" defer></script>
+    <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/site-settings" as="fetch" crossorigin />
+    <link rel="stylesheet" href="./styles.css?v=23" />
+    <script src="./app.js?v=23" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -225,6 +226,7 @@
           <button class="tab" type="button" data-admin-tab="users">المستخدمون</button>
           <button class="tab" type="button" data-admin-tab="requests">طلبات التعريب</button>
           <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
+          <button class="tab" type="button" data-admin-tab="interface">تخصيص الواجهة</button>
         </div>
         <section id="admin-translations-panel">
           <form id="translation-form" class="translation-form">
@@ -276,6 +278,40 @@
           <div class="admin-list" id="admin-requests"></div>
         </section>
         <section id="admin-reports-panel" hidden><div class="admin-list" id="admin-reports"></div></section>
+        <section id="admin-interface-panel" hidden>
+          <div class="admin-panel-heading">
+            <div><p class="eyebrow">مظهر الموقع</p><h3>تخصيص الواجهة الرئيسية</h3></div>
+          </div>
+          <form id="interface-form" class="interface-form">
+            <div class="interface-live-preview" aria-label="معاينة مباشرة للأحجام">
+              <span>معاينة مباشرة</span>
+              <h4>التعريب الذي تبحث عنه</h4>
+              <h5>التعريبات</h5>
+              <strong>ReStory: Chill Electronics Repairs</strong>
+              <p>نموذج للنصوص العامة في الصفحة الرئيسية.</p>
+            </div>
+            <div class="interface-scale-grid">
+              <label class="interface-range"><span>العنوان الرئيسي <output data-scale-output="heroTitleScale">100%</output></span><input name="heroTitleScale" type="range" min="70" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>عناوين الأقسام <output data-scale-output="sectionTitleScale">100%</output></span><input name="sectionTitleScale" type="range" min="70" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>أسماء التعريبات <output data-scale-output="cardTitleScale">100%</output></span><input name="cardTitleScale" type="range" min="65" max="150" step="5" value="100" /></label>
+              <label class="interface-range"><span>النصوص العامة <output data-scale-output="bodyTextScale">100%</output></span><input name="bodyTextScale" type="range" min="75" max="135" step="5" value="100" /></label>
+            </div>
+            <fieldset class="interface-order-card">
+              <legend>ترتيب أقسام الصفحة</legend>
+              <p>استخدم الأسهم لتغيير ترتيب الأقسام من الأعلى إلى الأسفل.</p>
+              <div class="interface-order-list" id="interface-order-list"></div>
+            </fieldset>
+            <div class="interface-visibility">
+              <label class="check-label"><input name="showNews" type="checkbox" checked /> إظهار قسم الأخبار</label>
+              <label class="check-label"><input name="showVip" type="checkbox" checked /> إظهار بطاقة VIP</label>
+            </div>
+            <div class="form-actions">
+              <button class="button primary" type="submit">حفظ التخصيص</button>
+              <button class="button ghost" id="reset-interface" type="button">استعادة الإعدادات الافتراضية</button>
+            </div>
+          </form>
+          <p class="form-message" id="interface-message" role="status"></p>
+        </section>
       </section>
     </dialog>
 
