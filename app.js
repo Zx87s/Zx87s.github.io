@@ -519,7 +519,11 @@
           const media = make("div", "support-media");
           media.append(make("span", "support-attachment-expired", "جارٍ فتح المرفق الخاص…"));
           const meta = make("div", "support-attachment-meta");
-          meta.append(make("span", "", message.attachment.name), make("span", "", supportFileSize(message.attachment.size)));
+          meta.append(
+            make("span", "", message.attachment.name),
+            make("span", "", supportFileSize(message.attachment.size)),
+            make("span", "", `متاح حتى ${formatDateTime(message.attachment.expiresAt)}`),
+          );
           row.append(media, meta);
           hydrateSupportAttachment(message, media);
         }
@@ -696,7 +700,7 @@
     }
     submit.disabled = true;
     form.elements.attachment.disabled = true;
-    $("#support-message-status").textContent = file ? "جارٍ رفع المرفق المشفر…" : "جارٍ إرسال الرسالة…";
+    $("#support-message-status").textContent = file ? "جارٍ رفع المرفق الخاص…" : "جارٍ إرسال الرسالة…";
     setSupportUploadProgress(file ? 1 : 0);
     try {
       const message = file

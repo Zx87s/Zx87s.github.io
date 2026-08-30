@@ -452,7 +452,7 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
 .support-media { display: block; overflow: hidden; margin-block-start: 8px; border: 1px solid #34343c; border-radius: 11px; background: #09090b; }
 .support-media img, .support-media video { display: block; width: min(100%,520px); max-height: 340px; object-fit: contain; }
 .support-attachment-expired { display: block; margin-block-start: 8px; border-radius: 9px; padding: 9px; background: rgba(63,63,70,.25); color: #8d8d96; font-size: .7rem; }
-.support-attachment-meta { display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px; color: #8d8d96; font-size: .62rem; }
+.support-attachment-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 8px; padding: 7px 9px; color: #8d8d96; font-size: .62rem; }
 .support-composer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding: 12px; background: #141417; }
 .support-composer textarea { min-height: 58px; resize: vertical; }
 .support-composer-actions { display: flex; align-items: center; gap: 8px; }
