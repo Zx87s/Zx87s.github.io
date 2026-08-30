@@ -9,6 +9,9 @@
   const MAX_UPLOAD_IMAGE_BYTES = 700 * 1024;
   const MAX_IMAGE_DIMENSION = 1920;
   const MAX_TRANSLATION_FILE_BYTES = 512 * 1024 * 1024;
+  const SUPPORT_CHUNK_SIZE = 512 * 1024;
+  const SUPPORT_IMAGE_MAX_SIZE = 5 * 1024 * 1024;
+  const SUPPORT_VIDEO_MAX_SIZE = 25 * 1024 * 1024;
   const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
   const DEFAULT_INTERFACE_SETTINGS = Object.freeze({
     heroTitleScale: 100,
@@ -59,7 +62,15 @@
     afterAuth: null,
     interfaceSettings: { ...DEFAULT_INTERFACE_SETTINGS, sectionOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder] },
     interfaceDraftOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
+    supportTickets: [],
+    supportMessages: [],
+    activeSupportTicket: null,
+    supportIsAgent: false,
   };
+  let presenceTimer = null;
+  let onlineTimer = null;
+  let supportPollTimer = null;
+  const supportObjectUrls = new Set();
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -100,6 +111,9 @@
     layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
     arrowUp: '<path d="m6 15 6-6 6 6"/>',
     arrowDown: '<path d="m6 9 6 6 6-6"/>',
+    headset: '<path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v5a2 2 0 0 0 2 2h2v-7H4Zm16 0v5a2 2 0 0 1-2 2h-2v-7h4Z"/><path d="M16 20c0 1-1.8 2-4 2"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    usersOnline: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6m1 4a5 5 0 0 1 4 5"/>',
   };
 
   function icon(name) {
@@ -214,6 +228,7 @@
     }
     state.user = result.user;
     updateHeader();
+    startPresenceTracking();
     loadNotifications().catch(() => {});
   }
 
@@ -230,9 +245,17 @@
     state.afterAuth = null;
     state.notifications = [];
     state.unreadNotifications = 0;
+    state.supportTickets = [];
+    state.supportMessages = [];
+    state.activeSupportTicket = null;
+    state.supportIsAgent = false;
+    stopPresenceTracking();
+    stopSupportPolling();
+    releaseSupportObjectUrls();
     localStorage.removeItem(TOKEN_KEY);
     closeDialog("notifications-dialog");
     closeDialog("vip-dialog");
+    closeDialog("support-dialog");
     updateHeader();
   }
 
@@ -240,6 +263,8 @@
     setIconText($("#account-button"), "user", state.user ? "حسابي" : "دخول");
     setIconText($("#admin-button"), "settings", "الإدارة");
     $("#admin-button").hidden = state.user?.tier !== "owner";
+    $("#support-button").hidden = !state.user;
+    $("#online-counter").hidden = state.user?.tier !== "owner";
     $("#notification-button").hidden = !state.user;
     updateNotificationBadge();
     renderCatalog();
@@ -324,6 +349,405 @@
       }
     } catch (error) {
       $("#notifications-list").replaceChildren(make("p", "empty-row", error.message));
+    }
+  }
+
+  const SUPPORT_CATEGORY_LABELS = {
+    account: "الحساب وتسجيل الدخول",
+    download: "تحميل أو تثبيت تعريب",
+    vip: "عضوية VIP أو PayPal",
+    translation: "مشكلة داخل تعريب",
+    technical: "مشكلة تقنية في الموقع",
+    other: "مشكلة أخرى",
+  };
+
+  function isSupportAgentClient() {
+    return state.user?.tier === "owner" || state.user?.tier === "mod";
+  }
+
+  function releaseSupportObjectUrls() {
+    supportObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    supportObjectUrls.clear();
+  }
+
+  function stopSupportPolling() {
+    if (supportPollTimer) window.clearInterval(supportPollTimer);
+    supportPollTimer = null;
+  }
+
+  async function heartbeatPresence() {
+    if (!state.user || document.visibilityState !== "visible") return;
+    await api("/api/presence", { method: "POST" });
+  }
+
+  async function refreshOnlineCount() {
+    if (state.user?.tier !== "owner") return;
+    const result = await api("/api/admin/presence");
+    $("#online-count").textContent = String(Number(result.online) || 0);
+  }
+
+  function stopPresenceTracking() {
+    if (presenceTimer) window.clearInterval(presenceTimer);
+    if (onlineTimer) window.clearInterval(onlineTimer);
+    presenceTimer = null;
+    onlineTimer = null;
+    $("#online-count").textContent = "0";
+  }
+
+  function startPresenceTracking() {
+    stopPresenceTracking();
+    if (!state.user) return;
+    heartbeatPresence().catch(() => {});
+    presenceTimer = window.setInterval(() => heartbeatPresence().catch(() => {}), 45_000);
+    if (state.user.tier === "owner") {
+      refreshOnlineCount().catch(() => {});
+      onlineTimer = window.setInterval(() => refreshOnlineCount().catch(() => {}), 15_000);
+    }
+  }
+
+  function supportCategoryLabel(category) {
+    return SUPPORT_CATEGORY_LABELS[category] || "دعم فني";
+  }
+
+  function supportFileSize(value) {
+    const size = Number(value) || 0;
+    return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.ceil(size / 1024))}KB`;
+  }
+
+  function showSupportPanel(panel) {
+    $("#support-empty").hidden = panel !== "empty";
+    $("#support-create").hidden = panel !== "create";
+    $("#support-chat").hidden = panel !== "chat";
+  }
+
+  function renderSupportTickets() {
+    const list = $("#support-ticket-list");
+    if (!state.supportTickets.length) {
+      list.replaceChildren(make("p", "empty-row compact", state.supportIsAgent ? "لا توجد تذاكر دعم." : "لا توجد تذاكر بعد."));
+      return;
+    }
+    list.replaceChildren(...state.supportTickets.map((ticket) => {
+      const button = make("button", `support-ticket-item${ticket.id === state.activeSupportTicket?.id ? " is-active" : ""}`);
+      button.type = "button";
+      const head = make("span", "support-ticket-item-head");
+      head.append(
+        make("strong", "", supportCategoryLabel(ticket.category)),
+        make("span", `support-ticket-state${ticket.status === "closed" ? " closed" : ""}`, ticket.status === "closed" ? "مغلقة" : "مفتوحة"),
+      );
+      const owner = make("small", `tier-name ${ticket.user.tier}`, `${ticket.user.username} · #${ticket.user.id}`);
+      button.append(head, owner, make("time", "", `${ticket.messageCount} رسالة · ${formatDateTime(ticket.updatedAt)}`));
+      button.addEventListener("click", () => selectSupportTicket(ticket));
+      return button;
+    }));
+  }
+
+  async function loadSupportTickets(render = true) {
+    const result = await api("/api/support/tickets");
+    state.supportIsAgent = Boolean(result.agent);
+    state.supportTickets = Array.isArray(result.tickets) ? result.tickets : [];
+    if (state.activeSupportTicket) {
+      const fresh = state.supportTickets.find((ticket) => ticket.id === state.activeSupportTicket.id);
+      state.activeSupportTicket = fresh || null;
+    }
+    if (render) renderSupportTickets();
+    return state.supportTickets;
+  }
+
+  function renderSupportTicketHeader() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    $("#support-ticket-category").textContent = supportCategoryLabel(ticket.category);
+    const owner = $("#support-ticket-owner");
+    owner.className = `tier-name ${ticket.user.tier}`;
+    owner.textContent = `${ticket.user.username} · #${ticket.user.id}`;
+    $("#support-ticket-meta").textContent = `${ticket.status === "open" ? "تذكرة مفتوحة" : "تذكرة مغلقة"} · ${formatDateTime(ticket.createdAt)}`;
+    const status = $("#support-ticket-status");
+    status.textContent = ticket.status === "open" ? "إغلاق التذكرة" : "إعادة فتح التذكرة";
+    status.hidden = ticket.status === "closed" && !state.supportIsAgent;
+    $("#support-message-form").hidden = ticket.status !== "open";
+    $("#support-message-status").textContent = ticket.status === "closed" ? "هذه التذكرة مغلقة." : "";
+  }
+
+  async function hydrateSupportAttachment(message, mount) {
+    if (!message.attachment || message.attachment.expired || !message.attachment.url) return;
+    try {
+      const response = await fetch(message.attachment.url, {
+        headers: { Authorization: `Bearer ${state.token}` },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(response.status === 410 ? "انتهت صلاحية المرفق." : "تعذر فتح المرفق.");
+      const blob = await response.blob();
+      if (!mount.isConnected || state.activeSupportTicket?.id !== message.ticketId) return;
+      const objectUrl = URL.createObjectURL(blob);
+      supportObjectUrls.add(objectUrl);
+      const media = message.attachment.type?.startsWith("video/") ? make("video") : make("img");
+      media.src = objectUrl;
+      if (media.tagName === "VIDEO") {
+        media.controls = true;
+        media.preload = "metadata";
+      } else {
+        media.alt = message.attachment.name;
+        media.loading = "lazy";
+      }
+      mount.replaceChildren(media);
+    } catch (error) {
+      mount.replaceChildren(make("span", "support-attachment-expired", error.message));
+    }
+  }
+
+  function renderSupportMessages(scroll = true) {
+    const list = $("#support-messages");
+    const keepBottom = scroll || list.scrollHeight - list.scrollTop - list.clientHeight < 100;
+    releaseSupportObjectUrls();
+    if (!state.supportMessages.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لا توجد رسائل."));
+      return;
+    }
+    const nodes = state.supportMessages.map((message) => {
+      const row = make("article", `support-message${message.senderUserId === state.user?.id ? " is-mine" : ""}`);
+      const head = make("div", "support-message-head");
+      head.append(
+        make("strong", `tier-name ${message.senderTier}`, message.senderUsername),
+        make("time", "", formatDateTime(message.createdAt)),
+      );
+      row.append(head);
+      if (message.body) row.append(make("p", "", message.body));
+      if (message.attachment) {
+        if (message.attachment.expired || !message.attachment.url) {
+          row.append(make("span", "support-attachment-expired", "انتهت صلاحية المرفق المؤقت."));
+        } else {
+          const media = make("div", "support-media");
+          media.append(make("span", "support-attachment-expired", "جارٍ فتح المرفق الخاص…"));
+          const meta = make("div", "support-attachment-meta");
+          meta.append(make("span", "", message.attachment.name), make("span", "", supportFileSize(message.attachment.size)));
+          row.append(media, meta);
+          hydrateSupportAttachment(message, media);
+        }
+      }
+      return row;
+    });
+    list.replaceChildren(...nodes);
+    if (keepBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  }
+
+  async function loadSupportMessages(after = 0) {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    const result = await api(`/api/support/tickets/${ticket.id}/messages${after ? `?after=${after}` : ""}`);
+    if (state.activeSupportTicket?.id !== ticket.id) return;
+    const rows = Array.isArray(result.messages) ? result.messages : [];
+    if (after) {
+      const existing = new Set(state.supportMessages.map((message) => message.id));
+      const fresh = rows.filter((message) => !existing.has(message.id));
+      if (fresh.length) {
+        state.supportMessages.push(...fresh);
+        renderSupportMessages(false);
+      }
+    } else {
+      state.supportMessages = rows;
+      renderSupportMessages();
+    }
+  }
+
+  async function selectSupportTicket(ticket) {
+    state.activeSupportTicket = ticket;
+    state.supportMessages = [];
+    renderSupportTickets();
+    renderSupportTicketHeader();
+    showSupportPanel("chat");
+    $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
+    try {
+      await loadSupportMessages();
+    } catch (error) {
+      $("#support-messages").replaceChildren(make("p", "empty-row compact", error.message));
+    }
+  }
+
+  function showSupportCreate() {
+    state.activeSupportTicket = null;
+    state.supportMessages = [];
+    releaseSupportObjectUrls();
+    renderSupportTickets();
+    $("#support-ticket-form").reset();
+    $("#support-create-message").textContent = "";
+    showSupportPanel("create");
+  }
+
+  async function pollSupport() {
+    if (!$("#support-dialog").open || !state.user) return;
+    try {
+      await loadSupportTickets();
+      if (state.activeSupportTicket) {
+        renderSupportTicketHeader();
+        const lastId = state.supportMessages.at(-1)?.id || 0;
+        await loadSupportMessages(lastId);
+      }
+    } catch {
+      // The next poll retries without interrupting the current conversation.
+    }
+  }
+
+  async function openSupport() {
+    if (!state.user || !state.token) {
+      showDialog("auth-dialog");
+      return;
+    }
+    $("#support-subtitle").textContent = isSupportAgentClient()
+      ? "صندوق تذاكر الأعضاء الخاص"
+      : "تذاكرك ومحادثاتك الخاصة مع فريق الدعم";
+    $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل التذاكر…"));
+    showSupportPanel("empty");
+    showDialog("support-dialog");
+    try {
+      await loadSupportTickets();
+      const initial = state.activeSupportTicket || state.supportTickets[0];
+      if (initial) await selectSupportTicket(initial);
+      else if (!state.supportIsAgent) showSupportCreate();
+      stopSupportPolling();
+      supportPollTimer = window.setInterval(pollSupport, 5_000);
+    } catch (error) {
+      $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", error.message));
+    }
+  }
+
+  async function createSupportTicket(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    submit.disabled = true;
+    $("#support-create-message").textContent = "جارٍ فتح التذكرة…";
+    try {
+      const result = await api("/api/support/tickets", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      await loadSupportTickets();
+      const ticket = state.supportTickets.find((item) => item.id === result.ticket.id) || result.ticket;
+      await selectSupportTicket(ticket);
+      toast("تم فتح التذكرة.");
+    } catch (error) {
+      $("#support-create-message").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  function validateSupportAttachment(file) {
+    if (!file) return null;
+    const image = ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type);
+    const video = ["video/mp4", "video/webm", "video/quicktime"].includes(file.type);
+    if (!image && !video) throw new Error("اختر صورة JPG/PNG/WEBP/GIF أو فيديو MP4/WEBM/MOV.");
+    if (image && file.size > SUPPORT_IMAGE_MAX_SIZE) throw new Error("حجم الصورة يتجاوز 5MB.");
+    if (video && file.size > SUPPORT_VIDEO_MAX_SIZE) throw new Error("حجم الفيديو يتجاوز 25MB.");
+    return file;
+  }
+
+  function setSupportUploadProgress(value) {
+    const progress = $("#support-upload-progress");
+    const percent = Math.max(0, Math.min(100, Math.round(value)));
+    progress.hidden = percent === 0;
+    $("span", progress).style.width = `${percent}%`;
+    $("b", progress).textContent = `${percent}%`;
+  }
+
+  async function uploadSupportAttachment(ticketId, file, body) {
+    const started = await api(`/api/support/tickets/${ticketId}/uploads`, {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+    });
+    const uploadId = started.uploadId;
+    try {
+      for (let index = 0; index < started.totalParts; index += 1) {
+        const chunk = file.slice(index * SUPPORT_CHUNK_SIZE, Math.min(file.size, (index + 1) * SUPPORT_CHUNK_SIZE));
+        await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}/part?partNumber=${index + 1}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: chunk,
+        });
+        setSupportUploadProgress(((index + 1) / started.totalParts) * 95);
+      }
+      const completed = await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+      setSupportUploadProgress(100);
+      return completed.message;
+    } catch (error) {
+      await api(`/api/support/tickets/${ticketId}/uploads/${uploadId}`, { method: "DELETE" }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async function sendSupportMessage(event) {
+    event.preventDefault();
+    const ticket = state.activeSupportTicket;
+    if (!ticket || ticket.status !== "open") return;
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    const body = form.elements.body.value.trim();
+    let file;
+    try { file = validateSupportAttachment(form.elements.attachment.files?.[0]); } catch (error) {
+      $("#support-message-status").textContent = error.message;
+      return;
+    }
+    if (!body && !file) {
+      $("#support-message-status").textContent = "اكتب رسالة أو اختر مرفقًا.";
+      return;
+    }
+    submit.disabled = true;
+    form.elements.attachment.disabled = true;
+    $("#support-message-status").textContent = file ? "جارٍ رفع المرفق المشفر…" : "جارٍ إرسال الرسالة…";
+    setSupportUploadProgress(file ? 1 : 0);
+    try {
+      const message = file
+        ? await uploadSupportAttachment(ticket.id, file, body)
+        : (await api(`/api/support/tickets/${ticket.id}/messages`, { method: "POST", body: JSON.stringify({ body }) })).message;
+      state.supportMessages.push(message);
+      form.reset();
+      $("#support-file-name").textContent = "الصور حتى 5MB، الفيديو حتى 25MB";
+      $("#support-message-status").textContent = "";
+      renderSupportMessages();
+      await loadSupportTickets();
+    } catch (error) {
+      $("#support-message-status").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      form.elements.attachment.disabled = false;
+      window.setTimeout(() => setSupportUploadProgress(0), 500);
+    }
+  }
+
+  async function toggleSupportTicketStatus() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket) return;
+    const status = ticket.status === "open" ? "closed" : "open";
+    try {
+      await api(`/api/support/tickets/${ticket.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      ticket.status = status;
+      renderSupportTicketHeader();
+      renderSupportTickets();
+      toast(status === "closed" ? "تم إغلاق التذكرة." : "تمت إعادة فتح التذكرة.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function deleteSupportTicket() {
+    const ticket = state.activeSupportTicket;
+    if (!ticket || !confirm(`حذف التذكرة #${ticket.id} ورسائلها ومرفقاتها نهائيًا؟`)) return;
+    try {
+      await api(`/api/support/tickets/${ticket.id}`, { method: "DELETE" });
+      state.supportTickets = state.supportTickets.filter((item) => item.id !== ticket.id);
+      state.activeSupportTicket = null;
+      state.supportMessages = [];
+      releaseSupportObjectUrls();
+      renderSupportTickets();
+      if (state.supportTickets[0]) await selectSupportTicket(state.supportTickets[0]);
+      else if (state.supportIsAgent) showSupportPanel("empty");
+      else showSupportCreate();
+      toast("تم حذف التذكرة بالكامل.");
+    } catch (error) {
+      toast(error.message, "error");
     }
   }
 
@@ -520,12 +944,13 @@
 
   function tierLabel(tier) {
     if (tier === "owner") return "Owner";
+    if (tier === "mod") return "Mod";
     if (tier === "vip") return "VIP";
     return "عضو";
   }
 
   function canAccessVip() {
-    return state.user?.tier === "vip" || state.user?.tier === "owner";
+    return state.user?.membership === "vip" || state.user?.tier === "owner";
   }
 
   function translationUrl(itemOrSlug, canonical = true) {
@@ -586,6 +1011,14 @@
     return canAccessVip()
       ? { label: "تنزيل التعريب", icon: "download", locked: false }
       : { label: "تنزيل التعريب", icon: "download", locked: true };
+  }
+
+  function translationTagNodes(item) {
+    const tags = [];
+    if (item.hasNewUpdate) tags.push(make("span", "translation-tag update", "تحديث جديد"));
+    if (item.isNewRelease) tags.push(make("span", "translation-tag new", "جديد"));
+    if (item.isExperimental) tags.push(make("span", "translation-tag experimental", "تجريبي"));
+    return tags;
   }
 
   async function loadNews(fresh = false) {
@@ -666,15 +1099,17 @@
     card.dataset.access = item.access;
     if (item.access === "vip" && !canAccessVip()) card.classList.add("is-vip-dimmed");
     const cover = make("div", "cover");
-    cover.append(make("span", "type-badge", item.access === "vip" ? "VIP" : "مجاني"));
+    const accessBadges = make("div", "cover-access-badges");
+    accessBadges.append(make("span", "type-badge", item.access === "vip" ? "VIP" : "مجاني"), ...translationTagNodes(item));
+    cover.append(accessBadges);
     if (item.isFeatured) cover.append(makeIconText("span", "featured-badge", "مميز", "star"));
     if (item.coverUrl) {
       const image = make("img");
       image.src = item.coverUrl;
       image.alt = `غلاف ${item.title}`;
-      image.loading = index < 4 ? "eager" : "lazy";
+      image.loading = index === 0 ? "eager" : "lazy";
       image.decoding = "async";
-      image.fetchPriority = index < 2 ? "high" : "low";
+      image.fetchPriority = index === 0 ? "high" : "low";
       image.addEventListener("error", () => image.remove(), { once: true });
       cover.prepend(image);
     }
@@ -885,7 +1320,7 @@
     const info = make("div", "detail-info");
     const badge = make("span", `type-badge detail-badge ${item.access}`, item.access === "vip" ? "VIP" : "مجاني");
     const badges = make("div", "detail-badges");
-    badges.append(badge);
+    badges.append(badge, ...translationTagNodes(item));
     if (item.isFeatured) badges.append(makeIconText("span", "featured-badge detail-featured", "تعريب مميز", "star"));
     info.append(badges, make("h2", "", item.title));
     if (item.description) info.append(make("p", "detail-description", item.description));
@@ -1227,6 +1662,7 @@
       state.user = result.user;
       state.downloads = result.downloads || [];
       updateHeader();
+      startPresenceTracking();
       await loadNotifications();
     } catch {
       clearSession();
@@ -1297,6 +1733,9 @@
       showDialog("auth-dialog");
       return;
     }
+    if (state.user) renderAccount();
+    else $("#account-summary").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل الحساب…"));
+    showDialog("account-dialog");
     try {
       const [result, invoiceResult] = await Promise.all([
         api("/api/auth/me"),
@@ -1305,8 +1744,8 @@
       state.user = result.user;
       state.downloads = result.downloads || [];
       state.invoices = invoiceResult.invoices || [];
+      updateHeader();
       renderAccount();
-      showDialog("account-dialog");
     } catch (error) {
       if (error.status === 401) clearSession();
       toast(error.message, "error");
@@ -1326,7 +1765,8 @@
     ];
     for (const [label, value] of items) {
       const item = make("div", "summary-item");
-      item.append(make("span", "", label), make("strong", "", value));
+      const content = make("strong", label === "اسم المستخدم" ? `tier-name ${user.tier}` : "", value);
+      item.append(make("span", "", label), content);
       summary.append(item);
     }
     const tier = make("div", "summary-item tier-summary");
@@ -2043,6 +2483,9 @@
         downloadSize,
         isPublished: values.get("isPublished") === "on",
         isFeatured: values.get("isFeatured") === "on",
+        hasNewUpdate: values.get("hasNewUpdate") === "on",
+        isNewRelease: values.get("isNewRelease") === "on",
+        isExperimental: values.get("isExperimental") === "on",
         publishedAt: publishedAtIso(values.get("publishedAt")),
         coverKey,
         galleryKeys,
@@ -2079,6 +2522,12 @@
       info.append(make("span", "", `#${item.id} · ${item.access === "vip" ? "VIP" : "مجاني"}`));
       info.append(makeIconText("span", "admin-published-date", `تاريخ النشر: ${formatDate(item.publishedAt)}`, "calendar"));
       if (item.isFeatured) info.append(makeIconText("span", "admin-featured", "تعريب مميز", "star"));
+      const tags = translationTagNodes(item);
+      if (tags.length) {
+        const tagList = make("div", "admin-translation-tags");
+        tagList.append(...tags);
+        info.append(tagList);
+      }
       const stats = make("div", "admin-stats");
       stats.append(
         makeIconText("span", "stat-line", `${Number(item.downloadCount) || 0} تحميل`, "download"),
@@ -2116,6 +2565,9 @@
     form.elements.downloadUrl.value = item.downloadUrl || "";
     form.elements.isPublished.checked = item.isPublished;
     form.elements.isFeatured.checked = item.isFeatured;
+    form.elements.hasNewUpdate.checked = item.hasNewUpdate;
+    form.elements.isNewRelease.checked = item.isNewRelease;
+    form.elements.isExperimental.checked = item.isExperimental;
     form.elements.publishedAt.value = item.publishedAt ? toDateTimeLocal(item.publishedAt) : "";
     syncDownloadFields();
     $("#cancel-edit").hidden = false;
@@ -2143,6 +2595,9 @@
     form.elements.id.value = "";
     form.elements.isPublished.checked = true;
     form.elements.isFeatured.checked = false;
+    form.elements.hasNewUpdate.checked = false;
+    form.elements.isNewRelease.checked = false;
+    form.elements.isExperimental.checked = false;
     form.elements.publishedAt.value = toDateTimeLocal(new Date());
     updateFileLabel(form.elements.cover);
     updateFileLabel(form.elements.gallery);
@@ -2469,11 +2924,13 @@
     list.replaceChildren(...state.users.map((user) => {
       const row = make("article", "admin-row user-row");
       const info = make("div", "admin-row-info");
-      info.append(make("strong", "", `${user.username} · #${user.id}`));
+      info.append(make("strong", `tier-name ${user.tier}`, `${user.username} · #${user.id}`));
       info.append(make("span", "", user.email));
       const membershipText = user.tier === "owner"
         ? "Owner"
-        : user.tier === "vip"
+        : user.tier === "mod"
+          ? user.membership === "vip" ? `Mod · VIP حتى ${formatDate(user.vipUntil)}` : "Mod"
+          : user.tier === "vip"
           ? `VIP حتى ${formatDate(user.vipUntil)}`
           : "عضو";
       info.append(make("span", `tier-pill ${user.tier}`, membershipText));
@@ -2487,17 +2944,20 @@
       const grant = makeIconText("button", "button primary small", "منح VIP", "crown");
       const revoke = makeIconText("button", "button danger small", "إلغاء VIP", "trash");
       const resetPassword = makeIconText("button", "button ghost small", "إعادة تعيين كلمة المرور", "key");
+      const setMod = makeIconText("button", "button ghost small", user.tier === "mod" ? "إزالة Mod" : "تعيين Mod", "shield");
       const deleteUser = makeIconText("button", "button danger small", "مسح الحساب", "trash");
-      grant.type = revoke.type = resetPassword.type = deleteUser.type = "button";
+      grant.type = revoke.type = resetPassword.type = setMod.type = deleteUser.type = "button";
       grant.addEventListener("click", () => updateMembership(user.id, "grant", Number(days.value)));
       revoke.addEventListener("click", () => updateMembership(user.id, "revoke"));
       resetPassword.addEventListener("click", () => resetUserPassword(user));
-      deleteUser.disabled = user.tier === "vip" || user.tier === "owner";
-      deleteUser.title = user.tier === "vip"
+      setMod.hidden = user.tier === "owner";
+      setMod.addEventListener("click", () => updateModeratorRole(user));
+      deleteUser.disabled = user.membership === "vip" || user.tier === "owner";
+      deleteUser.title = user.membership === "vip"
         ? "الحذف متوقف لحماية عضوية VIP من الضياع"
         : user.tier === "owner" ? "لا يمكن حذف حساب Owner" : "مسح الحساب نهائيًا";
       deleteUser.addEventListener("click", () => deleteUserAccount(user));
-      actions.append(days, grant, revoke, resetPassword, deleteUser);
+      actions.append(days, grant, revoke, setMod, resetPassword, deleteUser);
       row.append(info, actions);
       return row;
     }));
@@ -2508,6 +2968,22 @@
       await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ action, days }) });
       await loadAdminData();
       toast(action === "grant" ? "تم منح VIP." : "تم إلغاء VIP.");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function updateModeratorRole(user) {
+    const role = user.tier === "mod" ? "user" : "moderator";
+    const label = role === "moderator" ? "منح صلاحية Mod" : "إزالة صلاحية Mod";
+    if (!confirm(`${label} للحساب ${user.username} · #${user.id}؟`)) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "set_role", role }),
+      });
+      await loadAdminData();
+      toast(role === "moderator" ? "تم تعيين الحساب Mod للدعم الفني." : "تمت إزالة صلاحية Mod.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -2540,7 +3016,7 @@
   }
 
   async function deleteUserAccount(user) {
-    if (user.tier === "vip" || user.tier === "owner") return;
+    if (user.membership === "vip" || user.tier === "owner") return;
     const confirmationUsername = prompt(`لحذف الحساب نهائيًا، اكتب اسم المستخدم كما هو:\n${user.username}`, "");
     if (confirmationUsername === null) return;
     if (!confirm(`سيُحذف الحساب #${user.id} وتعليقاته وسجلاته نهائيًا. هل أنت متأكد؟`)) return;
@@ -2649,6 +3125,7 @@
   $("#register-form").addEventListener("submit", (event) => submitAuth(event, "register"));
   $("#recover-form").addEventListener("submit", submitRecovery);
   $("#account-button").addEventListener("click", openAccount);
+  $("#support-button").addEventListener("click", openSupport);
   $("#notification-button").addEventListener("click", openNotifications);
   $("#privacy-button").addEventListener("click", () => showDialog("privacy-dialog"));
   $("#translation-request-button").addEventListener("click", () => openTranslationRequest().catch((error) => toast(error.message, "error")));
@@ -2661,6 +3138,16 @@
   $("#copy-recovery-code").addEventListener("click", copyRecoveryCode);
   $("#confirm-recovery-code").addEventListener("click", confirmRecoveryCodeSaved);
   $("#translation-request-form").addEventListener("submit", submitTranslationRequest);
+  $("#support-ticket-form").addEventListener("submit", createSupportTicket);
+  $("#support-message-form").addEventListener("submit", sendSupportMessage);
+  $("#new-ticket-button").addEventListener("click", showSupportCreate);
+  $("#support-ticket-status").addEventListener("click", toggleSupportTicketStatus);
+  $("#support-ticket-delete").addEventListener("click", deleteSupportTicket);
+  $("#support-message-form").elements.attachment.addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0];
+    $("#support-file-name").textContent = file ? `${file.name} · ${supportFileSize(file.size)}` : "الصور حتى 5MB، الفيديو حتى 25MB";
+    $("#support-message-status").textContent = "";
+  });
   $("#translation-form").addEventListener("submit", saveTranslation);
   $("#news-form").addEventListener("submit", saveNews);
   $("#invoice-form").addEventListener("submit", submitPaypalInvoice);
@@ -2696,6 +3183,10 @@
   $("#image-dialog").addEventListener("close", () => {
     $("#lightbox-image").removeAttribute("src");
   });
+  $("#support-dialog").addEventListener("close", () => {
+    stopSupportPolling();
+    releaseSupportObjectUrls();
+  });
 
   setIconText($("#logout-button"), "logout", "خروج");
   setIconText($("#account-form button[type=submit]"), "save", "حفظ");
@@ -2703,6 +3194,9 @@
   setIconText($("#copy-recovery-code"), "copy", "نسخ الرمز");
   setIconText($("#translation-request-button"), "gamepad", "طلبات التعريب");
   setIconText($("#translation-request-form button[type=submit]"), "gamepad", "إرسال الطلب");
+  setIconText($("#new-ticket-button"), "headset", "تذكرة جديدة");
+  setIconText($("#support-ticket-form button[type=submit]"), "headset", "فتح التذكرة وبدء المحادثة");
+  setIconText($("#support-message-form button[type=submit]"), "send", "إرسال");
   setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
   setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
   setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
@@ -2722,6 +3216,16 @@
   window.setInterval(() => {
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
   }, 60_000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.user) {
+      heartbeatPresence().catch(() => {});
+      if (state.user.tier === "owner") refreshOnlineCount().catch(() => {});
+      if ($("#support-dialog").open) pollSupport();
+    }
+  });
   window.addEventListener("popstate", syncTranslationFromLocation);
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}), { once: true });
+  }
   Promise.all([loadPublicBootstrap(), restoreSession()]).then(syncTranslationFromLocation);
 })();
