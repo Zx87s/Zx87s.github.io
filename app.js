@@ -21,9 +21,15 @@
   });
   const PUBLIC_CACHE_TTL = 24 * 60 * 60 * 1000;
   const PUBLIC_CACHE_KEYS = { catalog: "zx87s_catalog_v1", news: "zx87s_news_v1", settings: "zx87s_settings_v1" };
-  const DETAIL_CACHE_TTL = 45 * 1000;
+  const DETAIL_CACHE_TTL = 10 * 60 * 1000;
+  const DETAIL_SESSION_PREFIX = "zx87s_detail_v2_";
+  const MAX_PREFETCH_CONCURRENCY = 2;
   const detailCache = new Map();
   const detailRequests = new Map();
+  const detailPrefetchQueue = [];
+  const queuedDetailReferences = new Set();
+  let activeDetailPrefetches = 0;
+  let detailPrefetchObserver = null;
   const state = {
     token: localStorage.getItem(TOKEN_KEY) || "",
     user: null,
@@ -42,6 +48,7 @@
     adminTranslationRequests: [],
     activeTranslation: null,
     comments: [],
+    commentsLoading: false,
     replyingTo: null,
     notifications: [],
     unreadNotifications: 0,
@@ -389,6 +396,28 @@
     applyInterfaceSettings(state.interfaceSettings);
   }
 
+  function applyPublicBootstrap(result) {
+    state.catalog = Array.isArray(result.translations) ? result.translations : [];
+    state.news = Array.isArray(result.news) ? result.news : [];
+    const settings = normalizeInterfaceSettings(result.settings);
+    applyInterfaceSettings(settings);
+    writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
+    writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
+    cacheInterfaceSettings(settings);
+    renderCatalog();
+    renderNews();
+    if (state.user?.tier === "owner") renderInterfaceForm();
+  }
+
+  async function loadPublicBootstrap() {
+    try {
+      const result = await api("/api/bootstrap");
+      applyPublicBootstrap(result);
+    } catch {
+      await Promise.all([loadInterfaceSettings(), loadCatalog(), loadNews()]);
+    }
+  }
+
   function normalizeInterfaceSettings(value) {
     const source = value && typeof value === "object" ? value : DEFAULT_INTERFACE_SETTINGS;
     const number = (key, minimum, maximum) => {
@@ -576,16 +605,16 @@
       grid.replaceChildren(make("p", "empty-row", "لا توجد أخبار منشورة."));
       return;
     }
-    grid.replaceChildren(...state.news.map((post, index) => {
+      grid.replaceChildren(...state.news.map((post, index) => {
       const card = make("article", `news-card${index === 0 ? " is-latest" : ""}`);
       card.id = `news-${post.id}`;
       if (post.coverUrl) {
         const image = make("img", "news-cover");
         image.src = post.coverUrl;
         image.alt = post.title;
-        image.loading = "lazy";
+        image.loading = index === 0 ? "eager" : "lazy";
         image.decoding = "async";
-        image.fetchPriority = "low";
+        image.fetchPriority = index === 0 ? "high" : "low";
         image.addEventListener("error", () => image.remove(), { once: true });
         card.append(image);
       }
@@ -625,12 +654,14 @@
   function renderCatalog() {
     const items = visibleCatalog();
     const grid = $("#catalog-grid");
+    detailPrefetchObserver?.disconnect();
+    detailPrefetchObserver = null;
     grid.replaceChildren(...items.map(makeCatalogCard));
     $("#empty-state").hidden = items.length > 0;
     $("#results-status").textContent = `${items.length} تعريب`;
   }
 
-  function makeCatalogCard(item) {
+  function makeCatalogCard(item, index) {
     const card = make("article", "catalog-card");
     card.dataset.access = item.access;
     if (item.access === "vip" && !canAccessVip()) card.classList.add("is-vip-dimmed");
@@ -641,9 +672,9 @@
       const image = make("img");
       image.src = item.coverUrl;
       image.alt = `غلاف ${item.title}`;
-      image.loading = "lazy";
+      image.loading = index < 4 ? "eager" : "lazy";
       image.decoding = "async";
-      image.fetchPriority = "low";
+      image.fetchPriority = index < 2 ? "high" : "low";
       image.addEventListener("error", () => image.remove(), { once: true });
       cover.prepend(image);
     }
@@ -657,7 +688,7 @@
       event.stopPropagation();
       openTranslation(item.id);
     });
-    titleLink.addEventListener("focus", () => prefetchTranslation(item.id), { once: true });
+    titleLink.addEventListener("focus", () => prefetchTranslation(item.id, true), { once: true });
     heading.append(titleLink);
     top.append(heading);
     const stats = make("div", "card-stats");
@@ -680,19 +711,49 @@
     });
     body.append(button);
     card.append(cover, body);
+    card.dataset.translationReference = String(item.id);
     card.addEventListener("click", (event) => {
       if (event.target.closest("button, a")) return;
       openTranslation(item.id);
     });
     card.addEventListener("pointerenter", () => prefetchTranslation(item.id), { once: true });
+    card.addEventListener("pointerdown", () => prefetchTranslation(item.id, true), { once: true, passive: true });
+    observeTranslationPrefetch(card, item.id);
     return card;
+  }
+
+  function readSessionTranslation(reference) {
+    if (state.token) return null;
+    try {
+      const key = `${DETAIL_SESSION_PREFIX}${String(reference)}`;
+      const cached = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (!cached?.data || Date.now() - Number(cached.savedAt) > DETAIL_CACHE_TTL) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      return cached;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSessionTranslation(result) {
+    if (state.token || !result?.translation) return;
+    const entry = { savedAt: Date.now(), data: result };
+    const references = [result.translation.id, result.translation.slug].filter(Boolean);
+    references.forEach((reference) => {
+      try { sessionStorage.setItem(`${DETAIL_SESSION_PREFIX}${String(reference)}`, JSON.stringify(entry)); } catch { /* Optional speed cache. */ }
+    });
   }
 
   function cachedTranslation(reference) {
     const entry = detailCache.get(String(reference));
     if (!entry || Date.now() - entry.savedAt > DETAIL_CACHE_TTL) {
       detailCache.delete(String(reference));
-      return null;
+      const sessionEntry = readSessionTranslation(reference);
+      if (!sessionEntry) return null;
+      detailCache.set(String(reference), sessionEntry);
+      return sessionEntry.data;
     }
     return entry.data;
   }
@@ -708,6 +769,7 @@
         detailCache.set(key, entry);
         if (result.translation?.id) detailCache.set(String(result.translation.id), entry);
         if (result.translation?.slug) detailCache.set(result.translation.slug, entry);
+        writeSessionTranslation(result);
         return result;
       })
       .finally(() => detailRequests.delete(key));
@@ -715,9 +777,51 @@
     return request;
   }
 
-  function prefetchTranslation(reference) {
-    if (navigator.connection?.saveData) return;
-    fetchTranslationDetail(reference).catch(() => {});
+  function canPrefetchDetails() {
+    const connection = navigator.connection;
+    return !connection?.saveData && !/^(slow-)?2g$/.test(connection?.effectiveType || "");
+  }
+
+  function drainDetailPrefetchQueue() {
+    while (activeDetailPrefetches < MAX_PREFETCH_CONCURRENCY && detailPrefetchQueue.length) {
+      const reference = detailPrefetchQueue.shift();
+      queuedDetailReferences.delete(String(reference));
+      activeDetailPrefetches += 1;
+      fetchTranslationDetail(reference)
+        .catch(() => {})
+        .finally(() => {
+          activeDetailPrefetches -= 1;
+          drainDetailPrefetchQueue();
+        });
+    }
+  }
+
+  function prefetchTranslation(reference, priority = false) {
+    if (!canPrefetchDetails() || cachedTranslation(reference) || detailRequests.has(String(reference))) return;
+    if (priority) {
+      fetchTranslationDetail(reference).catch(() => {});
+      return;
+    }
+    const key = String(reference);
+    if (queuedDetailReferences.has(key)) return;
+    queuedDetailReferences.add(key);
+    detailPrefetchQueue.push(reference);
+    drainDetailPrefetchQueue();
+  }
+
+  function observeTranslationPrefetch(card, reference) {
+    if (!("IntersectionObserver" in window) || !canPrefetchDetails()) return;
+    if (!detailPrefetchObserver) {
+      detailPrefetchObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          detailPrefetchObserver.unobserve(entry.target);
+          prefetchTranslation(entry.target.dataset.translationReference);
+        });
+      }, { rootMargin: "280px 0px" });
+    }
+    card.dataset.translationReference = String(reference);
+    detailPrefetchObserver.observe(card);
   }
 
   async function openTranslation(reference, { syncUrl = true } = {}) {
@@ -727,18 +831,38 @@
     const requestId = ++state.detailRequest;
     state.replyingTo = null;
     const detail = $("#translation-detail");
-    detail.replaceChildren(make("p", "detail-loading", "جارٍ تحميل التعريب…"));
+    const warmResult = cachedTranslation(reference);
+    if (warmResult) {
+      state.activeTranslation = warmResult.translation;
+      state.comments = Array.isArray(warmResult.comments) ? warmResult.comments : [];
+      state.commentsLoading = false;
+      renderTranslationDetail();
+    } else if (catalogItem) {
+      state.activeTranslation = catalogItem;
+      state.comments = [];
+      state.commentsLoading = true;
+      renderTranslationDetail();
+    } else {
+      detail.replaceChildren(make("p", "detail-loading", "جارٍ تحميل التعريب…"));
+    }
     showDialog("translation-dialog");
     try {
       const result = await fetchTranslationDetail(reference);
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
       state.activeTranslation = result.translation;
       state.comments = Array.isArray(result.comments) ? result.comments : [];
+      state.commentsLoading = false;
       document.title = `${state.activeTranslation.title} | تعريبات Zx87s`;
       renderTranslationDetail();
     } catch (error) {
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
-      detail.replaceChildren(make("p", "empty-row", error.message));
+      state.commentsLoading = false;
+      if (state.activeTranslation?.id === catalogItem?.id) {
+        renderTranslationDetail();
+        toast(error.message, "error");
+      } else {
+        detail.replaceChildren(make("p", "empty-row", error.message));
+      }
     }
   }
 
@@ -875,7 +999,9 @@
     }
 
     const list = make("div", "comments-list");
-    if (!state.comments.length) {
+    if (state.commentsLoading) {
+      list.append(make("p", "empty-row", "جارٍ تحميل التعليقات…"));
+    } else if (!state.comments.length) {
       list.append(make("p", "empty-row", "لا توجد تعليقات."));
     } else {
       const existingIds = new Set(state.comments.map((comment) => comment.id));
@@ -2591,9 +2717,11 @@
   renderCatalog();
   renderNews();
   syncTranslationFromLocation();
+  const directTranslation = new URL(location.href).searchParams.get("game");
+  if (directTranslation) prefetchTranslation(directTranslation, true);
   window.setInterval(() => {
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
   }, 60_000);
   window.addEventListener("popstate", syncTranslationFromLocation);
-  Promise.all([loadInterfaceSettings(), loadCatalog(), loadNews(), restoreSession()]).then(syncTranslationFromLocation);
+  Promise.all([loadPublicBootstrap(), restoreSession()]).then(syncTranslationFromLocation);
 })();
