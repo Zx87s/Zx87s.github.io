@@ -232,7 +232,7 @@
     const attempts = method === "GET" ? 2 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+        response = await fetch(`${API_BASE}${path}`, { credentials: "include", ...options, headers });
         break;
       } catch {
         if (attempt + 1 < attempts) {
@@ -1194,8 +1194,8 @@
 
   function translationTagNodes(item) {
     const tags = [];
-    if (item.hasNewUpdate) tags.push(make("span", "translation-tag update", "تحديث جديد"));
     if (item.isNewRelease) tags.push(make("span", "translation-tag new", "جديد"));
+    if (item.hasNewUpdate) tags.push(make("span", "translation-tag update", "تحديث جديد"));
     if (item.isExperimental) tags.push(make("span", "translation-tag experimental", "تجريبي"));
     return tags;
   }
@@ -1263,6 +1263,9 @@
     });
     return items.sort((first, second) => (
       Number(second.isFeatured) - Number(first.isFeatured)
+      || Number(second.isNewRelease) - Number(first.isNewRelease)
+      || Number(second.hasNewUpdate) - Number(first.hasNewUpdate)
+      || Number(second.isExperimental) - Number(first.isExperimental)
       || (Number(second.downloadCount) || 0) - (Number(first.downloadCount) || 0)
       || Number(second.id) - Number(first.id)
     ));
@@ -1806,6 +1809,15 @@
       openVipSupport().catch((supportError) => toast(supportError.message, "error"));
       return;
     }
+    const downloadWindow = window.open("", "_blank");
+    if (!downloadWindow) {
+      toast("اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد الضغط على تنزيل.", "error");
+      return;
+    }
+    downloadWindow.document.title = "تجهيز التنزيل";
+    downloadWindow.document.body.dir = "rtl";
+    downloadWindow.document.body.style.cssText = "margin:0;min-height:100vh;display:grid;place-items:center;background:#09090b;color:#f4f4f5;font-family:Tahoma,Arial,sans-serif";
+    downloadWindow.document.body.textContent = "جارٍ إنشاء رابط تنزيل آمن…";
     button.disabled = true;
     setIconText(button, "download", "جارٍ التحميل…");
     try {
@@ -1814,14 +1826,20 @@
       if (state.activeTranslation?.id === item.id) state.activeTranslation.downloadCount = result.downloadCount;
       renderCatalog();
       if (state.activeTranslation?.id === item.id) renderTranslationDetail();
-      const link = make("a");
-      link.href = result.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      document.body.append(link);
-      link.click();
-      link.remove();
+      if (!result.url || !/^[A-Za-z0-9_-]{32,128}$/.test(result.proof || "")) {
+        throw new Error("تعذر إنشاء رابط التنزيل الآمن.");
+      }
+      const downloadOrigin = new URL(API_BASE).origin;
+      const receiveReady = (event) => {
+        if (event.origin !== downloadOrigin || event.source !== downloadWindow || event.data?.type !== "zx87s-download-ready") return;
+        window.removeEventListener("message", receiveReady);
+        downloadWindow.postMessage({ type: "zx87s-download-proof", proof: result.proof }, downloadOrigin);
+      };
+      window.addEventListener("message", receiveReady);
+      window.setTimeout(() => window.removeEventListener("message", receiveReady), 20_000);
+      downloadWindow.location.replace(result.url);
     } catch (error) {
+      downloadWindow.close();
       if (error.status === 401) {
         clearSession();
         showDialog("auth-dialog");
