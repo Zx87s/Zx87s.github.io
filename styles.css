@@ -60,6 +60,7 @@ a { color: inherit; text-decoration: none; }
 .brand strong { color: var(--red); font-size: 1.26rem; }
 .brand span { color: #d4d4d8; font-size: 1rem; }
 .main-nav, .header-actions { display: flex; align-items: center; gap: 6px; }
+.header-badge-button { position: relative; }
 .support-button, .notification-button { position: relative; display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: 11px; background: #17171a; color: #e4e4e7; }
 .support-button:hover, .notification-button:hover { border-color: rgba(239,68,68,.5); color: #fca5a5; }
 .support-button svg, .notification-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -504,6 +505,12 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
 .request-status.rejected { background: rgba(239,68,68,.12); color: #fca5a5; }
 
 .admin-card { width: min(1160px,100%); border-color: rgba(239,68,68,.26); background: radial-gradient(circle at 100% 0,rgba(127,29,29,.18),transparent 32%),#101013; }
+.moderation-card { width: min(850px,100%); border-color: rgba(37,99,235,.3); background: radial-gradient(circle at 100% 0,rgba(30,58,138,.2),transparent 36%),#101013; }
+.moderation-heading { align-items: flex-start; }
+.moderation-heading p:last-child { margin: 5px 0 0; color: #8d8d96; font-size: .78rem; }
+.mod-mark { border: 1px solid rgba(59,130,246,.48); border-radius: 999px; padding: 5px 12px; background: rgba(30,58,138,.55); color: #93c5fd; font-size: .72rem; font-weight: 950; }
+.moderation-reports { margin-block-start: 20px; }
+.protected-comment-note { width: fit-content; border-radius: 999px; padding: 4px 9px; background: rgba(59,130,246,.1); color: #93c5fd !important; font-weight: 850; }
 .admin-main-heading { align-items: flex-start; }
 .admin-subtitle { margin: 5px 0 0; color: #8d8d96; font-size: .78rem; }
 .owner-mark { border: 1px solid rgba(239,68,68,.48); border-radius: 999px; padding: 5px 12px; background: rgba(69,10,10,.8); color: #f87171; font-size: .72rem; font-weight: 950; }

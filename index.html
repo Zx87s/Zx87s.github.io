@@ -11,8 +11,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=27" />
-    <script src="./app.js?v=27" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=29" />
+    <script src="./app.js?v=29" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -30,9 +30,13 @@
         </nav>
         <div class="header-actions">
           <span class="online-counter" id="online-counter" title="المستخدمون المتصلون الآن" hidden><i></i><b id="online-count">0</b><span>متصل</span></span>
-          <button class="button ghost" id="admin-button" type="button" hidden>الإدارة</button>
+          <button class="button ghost header-badge-button" id="admin-button" type="button" hidden>
+            <span id="admin-button-label">الإدارة</span>
+            <span class="notification-badge" id="admin-badge" hidden>0</span>
+          </button>
           <button class="support-button" id="support-button" type="button" aria-label="الدعم الفني" title="الدعم الفني" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v5a2 2 0 0 0 2 2h2v-7H4Zm16 0v5a2 2 0 0 1-2 2h-2v-7h4Z"/><path d="M16 20c0 1-1.8 2-4 2"/></svg>
+            <span class="notification-badge" id="support-badge" hidden>0</span>
           </button>
           <button class="notification-button" id="notification-button" type="button" aria-label="الإشعارات" title="الإشعارات" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
@@ -380,6 +384,17 @@
       </section>
     </dialog>
 
+    <dialog id="moderation-dialog" class="modal admin-modal">
+      <section class="modal-card moderation-card" aria-labelledby="moderation-title">
+        <button class="modal-close" data-close="moderation-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading moderation-heading">
+          <div><p class="eyebrow">صلاحيات Mod</p><h2 id="moderation-title">إدارة البلاغات</h2><p>مراجعة البلاغات وحذف تعليقات الأعضاء المخالفة فقط.</p></div>
+          <span class="mod-mark">Mod</span>
+        </div>
+        <div class="admin-list moderation-reports" id="moderation-reports"></div>
+      </section>
+    </dialog>
+
     <dialog id="vip-dialog" class="modal">
       <section class="modal-card narrow vip-dialog-card" aria-labelledby="vip-dialog-title">
         <button class="modal-close" data-close="vip-dialog" aria-label="إغلاق">×</button>
@@ -412,7 +427,7 @@
           <section>
             <h3>البيانات التي نجمعها</h3>
             <p>عند إنشاء حساب نطلب اسم المستخدم والبريد الإلكتروني وكلمة المرور. لا تُحفظ كلمة المرور بصورتها الأصلية، بل تُخزن كقيمة تحقق أحادية الاتجاه مع قيمة عشوائية خاصة بها. ونحفظ أيضًا رقم الحساب، فئة العضوية، تاريخ إنشاء الحساب والجلسات النشطة.</p>
-            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، وطلبات التعريب وصور الألعاب المرفوعة معها. ونحفظ وقت آخر نشاط للحساب المسجل لمدة محدودة لعرض العدد الإجمالي للمتصلين إلى Owner فقط، دون عرض قائمة بالأسماء. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
+            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، وطلبات التعريب وصور الألعاب المرفوعة معها. ولحساب الزوار المتصلين في اللحظة الحالية ننشئ معرّف زيارة عشوائيًا في المتصفح ونحفظ وقت نشاطه لمدة محدودة؛ يظهر إلى Owner العدد الإجمالي فقط دون أسماء الزوار أو عناوينهم. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
           </section>
 
           <section>
@@ -422,7 +437,7 @@
 
           <section>
             <h3>ما يظهر للآخرين</h3>
-            <p>عندما تكتب تعليقًا أو ردًا يظهر اسم المستخدم وفئة الحساب بجانب النص. لا يظهر بريدك الإلكتروني أو كلمة المرور أو سجل تنزيلاتك للزوار. وقد يحذف صاحب التعليق تعليقه، كما يستطيع الـOwner حذف المحتوى المخالف ومراجعة البلاغات.</p>
+            <p>عندما تكتب تعليقًا أو ردًا يظهر اسم المستخدم وفئة الحساب بجانب النص. لا يظهر بريدك الإلكتروني أو كلمة المرور أو سجل تنزيلاتك للزوار. وقد يحذف صاحب التعليق تعليقه، ويستطيع Owner حذف المحتوى المخالف ومراجعة البلاغات. ويستطيع Mod مراجعة البلاغات وحذف تعليقات الأعضاء، لكنه لا يستطيع حذف تعليق Owner أو Mod آخر.</p>
           </section>
 
           <section>

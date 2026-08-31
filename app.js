@@ -5,6 +5,7 @@
     ? "https://ta3reebat-memberships.zx87s.chatgpt.site"
     : location.origin;
   const TOKEN_KEY = "zx87s_session";
+  const VISITOR_KEY = "zx87s_visitor_id";
   const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
   const MAX_UPLOAD_IMAGE_BYTES = 700 * 1024;
   const MAX_IMAGE_DIMENSION = 1920;
@@ -33,6 +34,21 @@
   const queuedDetailReferences = new Set();
   let activeDetailPrefetches = 0;
   let detailPrefetchObserver = null;
+
+  function visitorId() {
+    const valid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || "");
+    try {
+      const existing = localStorage.getItem(VISITOR_KEY);
+      if (valid(existing)) return existing.toLowerCase();
+      const created = crypto.randomUUID();
+      localStorage.setItem(VISITOR_KEY, created);
+      return created;
+    } catch {
+      return crypto.randomUUID();
+    }
+  }
+
+  const VISITOR_ID = visitorId();
   const state = {
     token: localStorage.getItem(TOKEN_KEY) || "",
     user: null,
@@ -54,7 +70,11 @@
     commentsLoading: false,
     replyingTo: null,
     notifications: [],
+    notificationsLoaded: false,
     unreadNotifications: 0,
+    unreadSupport: 0,
+    unreadAdmin: 0,
+    unreadReports: 0,
     detailRequest: 0,
     activeTranslationReference: null,
     editing: null,
@@ -63,12 +83,15 @@
     interfaceSettings: { ...DEFAULT_INTERFACE_SETTINGS, sectionOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder] },
     interfaceDraftOrder: [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
     supportTickets: [],
+    supportTicketsLoaded: false,
     supportMessages: [],
+    supportMessageCache: new Map(),
     activeSupportTicket: null,
     supportIsAgent: false,
   };
   let presenceTimer = null;
   let onlineTimer = null;
+  let activityTimer = null;
   let supportPollTimer = null;
   const supportObjectUrls = new Set();
 
@@ -128,6 +151,12 @@
   function setIconText(node, iconName, text) {
     node.classList.add("has-icon");
     node.replaceChildren(icon(iconName), document.createTextNode(text));
+    return node;
+  }
+
+  function setBadgedButton(node, iconName, text, badge) {
+    node.classList.add("has-icon");
+    node.replaceChildren(icon(iconName), document.createTextNode(text), badge);
     return node;
   }
 
@@ -229,7 +258,8 @@
     state.user = result.user;
     updateHeader();
     startPresenceTracking();
-    loadNotifications().catch(() => {});
+    startActivityTracking();
+    prefetchPrivateSurfaces();
   }
 
   function clearSession() {
@@ -244,31 +274,62 @@
     state.adminTranslationRequests = [];
     state.afterAuth = null;
     state.notifications = [];
+    state.notificationsLoaded = false;
     state.unreadNotifications = 0;
+    state.unreadSupport = 0;
+    state.unreadAdmin = 0;
+    state.unreadReports = 0;
     state.supportTickets = [];
+    state.supportTicketsLoaded = false;
     state.supportMessages = [];
+    state.supportMessageCache.clear();
     state.activeSupportTicket = null;
     state.supportIsAgent = false;
     stopPresenceTracking();
+    stopActivityTracking();
     stopSupportPolling();
     releaseSupportObjectUrls();
     localStorage.removeItem(TOKEN_KEY);
     closeDialog("notifications-dialog");
     closeDialog("vip-dialog");
     closeDialog("support-dialog");
+    closeDialog("moderation-dialog");
+    closeDialog("admin-dialog");
     updateHeader();
+    startPresenceTracking();
   }
 
   function updateHeader() {
     setIconText($("#account-button"), "user", state.user ? "حسابي" : "دخول");
-    setIconText($("#admin-button"), "settings", "الإدارة");
-    $("#admin-button").hidden = state.user?.tier !== "owner";
+    const adminButton = $("#admin-button");
+    const adminBadge = $("#admin-badge");
+    const canModerate = state.user?.tier === "owner" || state.user?.tier === "mod";
+    setBadgedButton(adminButton, state.user?.tier === "mod" ? "flag" : "settings", state.user?.tier === "mod" ? "البلاغات" : "الإدارة", adminBadge);
+    adminButton.hidden = !canModerate;
     $("#support-button").hidden = !state.user;
     $("#online-counter").hidden = state.user?.tier !== "owner";
     $("#notification-button").hidden = !state.user;
     updateNotificationBadge();
+    updateActivityBadges();
     renderCatalog();
     if (state.activeTranslation) renderTranslationDetail();
+  }
+
+  function setBadge(badge, count, visible) {
+    const value = Math.max(0, Number(count) || 0);
+    badge.hidden = !visible || value === 0;
+    badge.textContent = value > 99 ? "99+" : String(value);
+  }
+
+  function updateActivityBadges() {
+    const signedIn = Boolean(state.user);
+    setBadge($("#support-badge"), state.unreadSupport, signedIn);
+    const adminCount = state.user?.tier === "owner" ? state.unreadAdmin : state.unreadReports;
+    setBadge($("#admin-badge"), adminCount, state.user?.tier === "owner" || state.user?.tier === "mod");
+    $("#support-button").setAttribute("aria-label", state.unreadSupport ? `الدعم الفني، ${state.unreadSupport} رسالة جديدة` : "الدعم الفني");
+    $("#admin-button").setAttribute("aria-label", adminCount
+      ? `${state.user?.tier === "mod" ? "البلاغات" : "الإدارة"}، ${adminCount} جديد`
+      : state.user?.tier === "mod" ? "البلاغات" : "الإدارة");
   }
 
   function updateNotificationBadge() {
@@ -325,6 +386,7 @@
     if (!state.token || !state.user) return;
     const result = await api("/api/notifications");
     state.notifications = Array.isArray(result.notifications) ? result.notifications : [];
+    state.notificationsLoaded = true;
     state.unreadNotifications = Number(result.unreadCount) || 0;
     updateNotificationBadge();
     if ($("#notifications-dialog").open) renderNotifications();
@@ -335,7 +397,8 @@
       showDialog("auth-dialog");
       return;
     }
-    $("#notifications-list").replaceChildren(make("p", "empty-row", "جارٍ تحميل الإشعارات…"));
+    if (state.notificationsLoaded) renderNotifications();
+    else $("#notifications-list").replaceChildren(make("p", "empty-row", "جارٍ تحميل الإشعارات…"));
     showDialog("notifications-dialog");
     try {
       await loadNotifications();
@@ -350,6 +413,46 @@
     } catch (error) {
       $("#notifications-list").replaceChildren(make("p", "empty-row", error.message));
     }
+  }
+
+  async function loadActivityBadges() {
+    if (!state.user || !state.token) return;
+    const result = await api("/api/activity-badges");
+    state.unreadSupport = Number(result.supportUnread) || 0;
+    state.unreadAdmin = Number(result.adminUnread) || 0;
+    state.unreadReports = Number(result.reportsUnread) || 0;
+    updateActivityBadges();
+  }
+
+  async function markActivityRead(channel) {
+    if (!state.user || !state.token) return;
+    if (channel === "support") state.unreadSupport = 0;
+    if (channel === "admin") state.unreadAdmin = 0;
+    if (channel === "reports") state.unreadReports = 0;
+    updateActivityBadges();
+    await api("/api/activity-badges", { method: "PATCH", body: JSON.stringify({ channel }) });
+  }
+
+  function stopActivityTracking() {
+    if (activityTimer) window.clearInterval(activityTimer);
+    activityTimer = null;
+  }
+
+  function startActivityTracking() {
+    stopActivityTracking();
+    if (!state.user) return;
+    loadActivityBadges().catch(() => {});
+    activityTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadActivityBadges().catch(() => {});
+    }, 15_000);
+  }
+
+  function prefetchPrivateSurfaces() {
+    if (!state.user || !state.token) return;
+    Promise.allSettled([
+      loadNotifications(),
+      prefetchSupportTickets(),
+    ]);
   }
 
   const SUPPORT_CATEGORY_LABELS = {
@@ -376,8 +479,8 @@
   }
 
   async function heartbeatPresence() {
-    if (!state.user || document.visibilityState !== "visible") return;
-    await api("/api/presence", { method: "POST" });
+    if (document.visibilityState !== "visible") return;
+    await api("/api/presence", { method: "POST", body: JSON.stringify({ visitorId: VISITOR_ID }) });
   }
 
   async function refreshOnlineCount() {
@@ -396,11 +499,11 @@
 
   function startPresenceTracking() {
     stopPresenceTracking();
-    if (!state.user) return;
-    heartbeatPresence().catch(() => {});
+    heartbeatPresence().then(() => {
+      if (state.user?.tier === "owner") refreshOnlineCount().catch(() => {});
+    }).catch(() => {});
     presenceTimer = window.setInterval(() => heartbeatPresence().catch(() => {}), 45_000);
-    if (state.user.tier === "owner") {
-      refreshOnlineCount().catch(() => {});
+    if (state.user?.tier === "owner") {
       onlineTimer = window.setInterval(() => refreshOnlineCount().catch(() => {}), 15_000);
     }
   }
@@ -445,12 +548,21 @@
     const result = await api("/api/support/tickets");
     state.supportIsAgent = Boolean(result.agent);
     state.supportTickets = Array.isArray(result.tickets) ? result.tickets : [];
+    state.supportTicketsLoaded = true;
     if (state.activeSupportTicket) {
       const fresh = state.supportTickets.find((ticket) => ticket.id === state.activeSupportTicket.id);
       state.activeSupportTicket = fresh || null;
     }
     if (render) renderSupportTickets();
     return state.supportTickets;
+  }
+
+  async function prefetchSupportTickets() {
+    await loadSupportTickets(false);
+    const first = state.activeSupportTicket || state.supportTickets[0];
+    if (!first || state.supportMessageCache.has(first.id)) return;
+    const result = await api(`/api/support/tickets/${first.id}/messages`);
+    state.supportMessageCache.set(first.id, Array.isArray(result.messages) ? result.messages : []);
   }
 
   function renderSupportTicketHeader() {
@@ -545,23 +657,28 @@
       const fresh = rows.filter((message) => !existing.has(message.id));
       if (fresh.length) {
         state.supportMessages.push(...fresh);
+        state.supportMessageCache.set(ticket.id, [...state.supportMessages]);
         renderSupportMessages(false);
       }
     } else {
       state.supportMessages = rows;
+      state.supportMessageCache.set(ticket.id, [...rows]);
       renderSupportMessages();
     }
+    return rows.length;
   }
 
   async function selectSupportTicket(ticket) {
     state.activeSupportTicket = ticket;
-    state.supportMessages = [];
+    const cached = state.supportMessageCache.get(ticket.id);
+    state.supportMessages = cached ? [...cached] : [];
     renderSupportTickets();
     renderSupportTicketHeader();
     showSupportPanel("chat");
-    $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
+    if (cached) renderSupportMessages();
+    else $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
     try {
-      await loadSupportMessages();
+      await loadSupportMessages(cached?.at(-1)?.id || 0);
     } catch (error) {
       $("#support-messages").replaceChildren(make("p", "empty-row compact", error.message));
     }
@@ -584,7 +701,8 @@
       if (state.activeSupportTicket) {
         renderSupportTicketHeader();
         const lastId = state.supportMessages.at(-1)?.id || 0;
-        await loadSupportMessages(lastId);
+        const fresh = await loadSupportMessages(lastId);
+        if (fresh) markActivityRead("support").catch(() => {});
       }
     } catch {
       // The next poll retries without interrupting the current conversation.
@@ -599,9 +717,25 @@
     $("#support-subtitle").textContent = isSupportAgentClient()
       ? "صندوق تذاكر الأعضاء الخاص"
       : "تذاكرك ومحادثاتك الخاصة مع فريق الدعم";
-    $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل التذاكر…"));
-    showSupportPanel("empty");
+    if (state.supportTicketsLoaded) renderSupportTickets();
+    else $("#support-ticket-list").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل التذاكر…"));
+    const cachedInitial = state.activeSupportTicket || state.supportTickets[0];
+    if (cachedInitial) {
+      state.activeSupportTicket = cachedInitial;
+      renderSupportTicketHeader();
+      showSupportPanel("chat");
+      const cachedMessages = state.supportMessageCache.get(cachedInitial.id);
+      if (cachedMessages) {
+        state.supportMessages = [...cachedMessages];
+        renderSupportMessages();
+      } else {
+        $("#support-messages").replaceChildren(make("p", "empty-row compact", "جارٍ تحميل المحادثة…"));
+      }
+    } else {
+      showSupportPanel("empty");
+    }
     showDialog("support-dialog");
+    markActivityRead("support").catch(() => {});
     try {
       await loadSupportTickets();
       const initial = state.activeSupportTicket || state.supportTickets[0];
@@ -707,6 +841,7 @@
         ? await uploadSupportAttachment(ticket.id, file, body)
         : (await api(`/api/support/tickets/${ticket.id}/messages`, { method: "POST", body: JSON.stringify({ body }) })).message;
       state.supportMessages.push(message);
+      state.supportMessageCache.set(ticket.id, [...state.supportMessages]);
       form.reset();
       $("#support-file-name").textContent = "الصور حتى 5MB، الفيديو حتى 25MB";
       $("#support-message-status").textContent = "";
@@ -742,6 +877,7 @@
     try {
       await api(`/api/support/tickets/${ticket.id}`, { method: "DELETE" });
       state.supportTickets = state.supportTickets.filter((item) => item.id !== ticket.id);
+      state.supportMessageCache.delete(ticket.id);
       state.activeSupportTicket = null;
       state.supportMessages = [];
       releaseSupportObjectUrls();
@@ -1082,10 +1218,15 @@
 
   function visibleCatalog() {
     const query = normalize($("#catalog-search").value);
-    return state.catalog.filter((item) => {
+    const items = state.catalog.filter((item) => {
       const matchesFilter = state.filter === "all" || item.access === state.filter;
       return matchesFilter && (!query || normalize(`${item.title} ${item.description}`).includes(query));
     });
+    return items.sort((first, second) => (
+      Number(second.isFeatured) - Number(first.isFeatured)
+      || (Number(second.downloadCount) || 0) - (Number(first.downloadCount) || 0)
+      || Number(second.id) - Number(first.id)
+    ));
   }
 
   function renderCatalog() {
@@ -1589,7 +1730,7 @@
       if (state.replyingTo && removedIds.has(state.replyingTo.id)) state.replyingTo = null;
       updateActiveCommentCount(state.comments.length);
       renderTranslationDetail();
-      if (state.user?.role === "admin") await loadAdminReports();
+      if (state.user?.role === "admin" || state.user?.role === "moderator") await loadAdminReports();
       toast("تم حذف التعليق.");
     } catch (error) {
       toast(error.message, "error");
@@ -1667,7 +1808,8 @@
       state.downloads = result.downloads || [];
       updateHeader();
       startPresenceTracking();
-      await loadNotifications();
+      startActivityTracking();
+      prefetchPrivateSurfaces();
     } catch {
       clearSession();
     }
@@ -2014,7 +2156,21 @@
   async function openAdmin() {
     if (state.user?.tier !== "owner") return;
     showDialog("admin-dialog");
+    markActivityRead("admin").catch(() => {});
     await loadAdminData();
+  }
+
+  async function openModeration() {
+    if (state.user?.tier !== "mod") return;
+    renderAdminReports();
+    showDialog("moderation-dialog");
+    markActivityRead("reports").catch(() => {});
+    await loadAdminReports();
+  }
+
+  function openControlCenter() {
+    if (state.user?.tier === "owner") openAdmin();
+    else if (state.user?.tier === "mod") openModeration();
   }
 
   async function loadAdminData() {
@@ -3037,7 +3193,7 @@
   }
 
   async function loadAdminReports() {
-    if (state.user?.role !== "admin") return;
+    if (state.user?.role !== "admin" && state.user?.role !== "moderator") return;
     try {
       const result = await api("/api/admin/comment-reports");
       state.adminReports = result.reports || [];
@@ -3048,12 +3204,7 @@
   }
 
   function renderAdminReports() {
-    const list = $("#admin-reports");
-    if (!state.adminReports.length) {
-      list.replaceChildren(make("p", "empty-row", "لا توجد بلاغات."));
-      return;
-    }
-    list.replaceChildren(...state.adminReports.map((report) => {
+    const buildRows = () => state.adminReports.map((report) => {
       const row = make("article", "admin-row report-row");
       const info = make("div", "admin-row-info");
       const title = make("strong", "", report.translationTitle);
@@ -3070,10 +3221,20 @@
       dismiss.type = remove.type = "button";
       dismiss.addEventListener("click", () => dismissReports(report.commentId));
       remove.addEventListener("click", () => deleteReportedComment(report.commentId));
+      const protectedComment = state.user?.tier === "mod" && (report.authorTier === "owner" || report.authorTier === "mod");
+      if (protectedComment) {
+        remove.disabled = true;
+        remove.title = "لا يستطيع Mod حذف تعليق Owner أو Mod آخر.";
+        info.append(make("span", "protected-comment-note", "تعليق محمي من حذف Mod"));
+      }
       actions.append(dismiss, remove);
       row.append(info, actions);
       return row;
-    }));
+    });
+    [$("#admin-reports"), $("#moderation-reports")].filter(Boolean).forEach((list) => {
+      if (!state.adminReports.length) list.replaceChildren(make("p", "empty-row", "لا توجد بلاغات."));
+      else list.replaceChildren(...buildRows());
+    });
   }
 
   async function dismissReports(commentId) {
@@ -3082,7 +3243,7 @@
       await api(`/api/comments/${commentId}/reports`, { method: "DELETE" });
       state.adminReports = state.adminReports.filter((report) => report.commentId !== commentId);
       renderAdminReports();
-      renderAdminOverview();
+      if (state.user?.tier === "owner") renderAdminOverview();
       toast("تم حذف البلاغ.");
     } catch (error) {
       toast(error.message, "error");
@@ -3135,7 +3296,7 @@
   $("#translation-request-button").addEventListener("click", () => openTranslationRequest().catch((error) => toast(error.message, "error")));
   $("#vip-support-button").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
   $("#invoice-shortcut").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
-  $("#admin-button").addEventListener("click", openAdmin);
+  $("#admin-button").addEventListener("click", openControlCenter);
   $("#logout-button").addEventListener("click", logout);
   $("#account-form").addEventListener("submit", updateAccount);
   $("#recovery-code-form").addEventListener("submit", generateRecoveryCode);
@@ -3212,6 +3373,7 @@
   syncDownloadFields();
   hydratePublicCache();
   updateHeader();
+  startPresenceTracking();
   renderCatalog();
   renderNews();
   syncTranslationFromLocation();
@@ -3219,12 +3381,15 @@
   if (directTranslation) prefetchTranslation(directTranslation, true);
   window.setInterval(() => {
     if (state.user && document.visibilityState === "visible") loadNotifications().catch(() => {});
-  }, 60_000);
+  }, 30_000);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && state.user) {
+    if (document.visibilityState === "visible") {
       heartbeatPresence().catch(() => {});
-      if (state.user.tier === "owner") refreshOnlineCount().catch(() => {});
-      if ($("#support-dialog").open) pollSupport();
+      if (state.user) {
+        loadActivityBadges().catch(() => {});
+        if (state.user.tier === "owner") refreshOnlineCount().catch(() => {});
+        if ($("#support-dialog").open) pollSupport();
+      }
     }
   });
   window.addEventListener("popstate", syncTranslationFromLocation);
