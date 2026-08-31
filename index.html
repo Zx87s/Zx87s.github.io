@@ -11,8 +11,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=29" />
-    <script src="./app.js?v=29" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=30" />
+    <script src="./app.js?v=30" defer></script>
   </head>
   <body>
     <header class="site-header">
@@ -314,7 +314,11 @@
             <div class="form-actions span-2"><button class="button primary" type="submit">حفظ التعريب</button><button class="button ghost" id="cancel-edit" type="button" hidden>إلغاء التعديل</button></div>
           </form>
           <p class="form-message" id="translation-message" role="status"></p>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث التعريبات</span><input id="admin-translation-search" type="search" maxlength="120" placeholder="ابحث بالاسم الكامل أو رقم التعريب" autocomplete="off" /></label>
+          </div>
           <div class="admin-list" id="admin-translations"></div>
+          <div id="admin-translations-pagination"></div>
         </section>
         <section id="admin-news-panel" hidden>
           <form id="news-form" class="translation-form news-form">
@@ -327,7 +331,11 @@
             <div class="form-actions span-2"><button class="button primary" type="submit">نشر الخبر</button><button class="button ghost" id="cancel-news-edit" type="button" hidden>إلغاء التعديل</button></div>
           </form>
           <p class="form-message" id="news-message" role="status"></p>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث الأخبار</span><input id="admin-news-search" type="search" maxlength="140" placeholder="ابحث بعنوان الخبر أو نصه" autocomplete="off" /></label>
+          </div>
           <div class="admin-list" id="admin-news"></div>
+          <div id="admin-news-pagination"></div>
         </section>
         <section id="admin-invoices-panel" hidden>
           <div class="admin-panel-heading">
@@ -341,7 +349,14 @@
           </div>
           <div class="admin-list invoice-admin-list" id="admin-invoices"></div>
         </section>
-        <section id="admin-users-panel" hidden><div class="admin-list" id="admin-users"></div></section>
+        <section id="admin-users-panel" hidden>
+          <div class="admin-panel-heading"><div><p class="eyebrow">إدارة الحسابات</p><h3>المستخدمون</h3></div></div>
+          <div class="admin-list-toolbar">
+            <label class="admin-search"><span>بحث المستخدمين</span><input id="admin-user-search" type="search" maxlength="80" placeholder="ابحث بالاسم أو رقم الحساب #" autocomplete="off" /></label>
+          </div>
+          <div class="admin-list" id="admin-users"></div>
+          <div id="admin-users-pagination"></div>
+        </section>
         <section id="admin-requests-panel" hidden>
           <div class="admin-panel-heading"><div><p class="eyebrow">اقتراحات الأعضاء</p><h3>طلبات التعريب</h3></div></div>
           <div class="admin-list" id="admin-requests"></div>

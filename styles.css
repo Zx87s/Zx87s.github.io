@@ -466,19 +466,24 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
 .support-upload-progress b { position: relative; z-index: 1; display: grid; height: 100%; place-items: center; color: white; font-size: .62rem; }
 .notification-item {
   display: grid;
-  grid-template-columns: 42px minmax(0,1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0,1fr) 34px;
+  gap: 4px;
   align-items: start;
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 13px;
+  padding: 6px;
   background: #151518;
   color: var(--text);
   text-align: start;
 }
 .notification-item:hover { border-color: #52525b; background: #1b1b1f; }
 .notification-item.is-unread { border-color: rgba(239,68,68,.52); background: rgba(127,29,29,.18); }
+.notification-open { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 12px; align-items: start; min-width: 0; border: 0; border-radius: 10px; padding: 7px; background: transparent; color: inherit; text-align: start; cursor: pointer; }
+.notification-open:focus-visible { outline: 2px solid #ef4444; outline-offset: 1px; }
+.notification-delete { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #71717a; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.notification-delete:hover { border-color: rgba(239,68,68,.35); background: rgba(127,29,29,.2); color: #fca5a5; }
+.notification-delete:disabled { cursor: wait; opacity: .45; }
 .notification-symbol { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: #27272a; color: #fca5a5; }
 .notification-symbol.heart { color: #fb7185; }
 .notification-symbol.heart .ui-icon { fill: currentColor; }
@@ -534,6 +539,20 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
 .check-label input { width: 18px; min-height: 18px; margin: 0; }
 .form-actions { display: flex; gap: 8px; }
 .admin-list { display: grid; gap: 9px; margin-block-start: 18px; }
+.admin-list-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-block-start: 20px; }
+.admin-search { display: grid; width: min(100%,520px); gap: 7px; color: #d4d4d8; font-size: .76rem; font-weight: 900; }
+.admin-search input { width: 100%; min-height: 44px; border: 1px solid #3f3f46; border-radius: 12px; padding: 10px 13px; outline: 0; background: #0d0d10; color: white; }
+.admin-search input:focus { border-color: #5865f2; box-shadow: 0 0 0 3px rgba(88,101,242,.14); }
+.admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-block-start: 16px; border: 1px solid #303037; border-radius: 14px; padding: 12px 14px; background: #202126; color: #c7c8cf; }
+.pagination-summary { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: .76rem; }
+.pagination-size { min-width: 72px; min-height: 38px; border: 2px solid #5865f2; border-radius: 10px; padding: 6px 9px; outline: 0; background: #26272e; color: white; font-weight: 850; }
+.pagination-controls { display: flex; align-items: center; gap: 4px; direction: rtl; }
+.pagination-controls button { min-width: 34px; height: 34px; border: 0; border-radius: 999px; padding-inline: 8px; background: transparent; color: white; font-size: .76rem; font-weight: 900; cursor: pointer; }
+.pagination-controls button:hover:not(:disabled) { background: #30313a; }
+.pagination-controls button:disabled { cursor: not-allowed; color: #6b6d76; }
+.pagination-controls .pagination-page.is-active { background: #5865f2; color: white; }
+.pagination-step { min-width: 66px !important; }
+.pagination-ellipsis { display: grid; min-width: 24px; place-items: center; color: #9a9ba4; }
 .admin-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--line); border-radius: 14px; padding: 13px 15px; background: #151518; }
 .admin-row-info { min-width: 0; display: grid; gap: 3px; }
 .admin-row-info strong { overflow-wrap: anywhere; font-size: .9rem; }
@@ -676,6 +695,9 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
   .account-summary, .two-columns, .translation-form { grid-template-columns: 1fr; }
   .span-2 { grid-column: auto; }
   .admin-row { align-items: stretch; flex-direction: column; }
+  .admin-pagination { align-items: stretch; flex-direction: column; }
+  .pagination-summary { justify-content: center; }
+  .pagination-controls { justify-content: center; flex-wrap: wrap; }
   .row-actions, .membership-actions { justify-content: flex-start; flex-wrap: wrap; }
   .admin-panel-heading, .paypal-invoice-row { align-items: stretch; flex-direction: column; }
   .invoice-filters { width: 100%; }

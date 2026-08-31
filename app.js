@@ -59,6 +59,19 @@
     adminTranslations: [],
     adminNews: [],
     users: [],
+    adminUserQuery: "",
+    adminUserPage: 1,
+    adminUserPageSize: 25,
+    adminUserTotal: 0,
+    adminUserAccountTotal: 0,
+    adminUserTotalPages: 1,
+    adminUserRequest: 0,
+    adminTranslationQuery: "",
+    adminTranslationPage: 1,
+    adminTranslationPageSize: 25,
+    adminNewsQuery: "",
+    adminNewsPage: 1,
+    adminNewsPageSize: 25,
     adminReports: [],
     invoices: [],
     adminInvoices: [],
@@ -93,6 +106,7 @@
   let onlineTimer = null;
   let activityTimer = null;
   let supportPollTimer = null;
+  let adminUserSearchTimer = null;
   const supportObjectUrls = new Set();
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -355,8 +369,9 @@
       return;
     }
     list.replaceChildren(...state.notifications.map((notification) => {
-      const item = make("button", `notification-item${notification.isRead ? "" : " is-unread"}`);
-      item.type = "button";
+      const item = make("article", `notification-item${notification.isRead ? "" : " is-unread"}`);
+      const open = make("button", "notification-open");
+      open.type = "button";
       const symbol = notification.type === "news" ? "news" : notification.type === "heart" ? "heart" : notification.type === "reply" ? "reply" : "comments";
       const iconBox = make("span", `notification-symbol ${notification.type}`);
       iconBox.append(icon(symbol));
@@ -366,8 +381,8 @@
         make("span", "", notification.type === "news" ? "أخبار التعريبات" : `في ${notification.translationTitle}`),
         make("time", "", formatDateTime(notification.createdAt)),
       );
-      item.append(iconBox, content);
-      item.addEventListener("click", () => {
+      open.append(iconBox, content);
+      open.addEventListener("click", () => {
         closeDialog("notifications-dialog");
         if (notification.type === "news") {
           const target = document.getElementById(`news-${notification.newsId}`);
@@ -378,8 +393,32 @@
           openTranslation(notification.translationId);
         }
       });
+      const remove = make("button", "notification-delete", "×");
+      remove.type = "button";
+      remove.title = "حذف الإشعار";
+      remove.setAttribute("aria-label", `حذف الإشعار: ${notificationText(notification)}`);
+      remove.addEventListener("click", () => deleteNotification(notification, remove));
+      item.append(open, remove);
       return item;
     }));
+  }
+
+  async function deleteNotification(notification, button) {
+    button.disabled = true;
+    try {
+      await api("/api/notifications", {
+        method: "DELETE",
+        body: JSON.stringify({ id: notification.id }),
+      });
+      const wasUnread = !notification.isRead;
+      state.notifications = state.notifications.filter((item) => item.id !== notification.id);
+      if (wasUnread) state.unreadNotifications = Math.max(0, state.unreadNotifications - 1);
+      updateNotificationBadge();
+      renderNotifications();
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message, "error");
+    }
   }
 
   async function loadNotifications() {
@@ -2178,14 +2217,14 @@
       const [translationResult, newsResult, userResult, reportResult, invoiceResult, requestResult] = await Promise.all([
         api("/api/admin/translations"),
         api("/api/admin/news"),
-        api("/api/admin/users"),
+        api(adminUsersEndpoint()),
         api("/api/admin/comment-reports"),
         api("/api/admin/paypal-invoices"),
         api("/api/admin/translation-requests"),
       ]);
       state.adminTranslations = translationResult.translations || [];
       state.adminNews = newsResult.news || [];
-      state.users = userResult.users || [];
+      applyAdminUsersResult(userResult);
       state.adminReports = reportResult.reports || [];
       state.adminInvoices = invoiceResult.invoices || [];
       state.adminTranslationRequests = requestResult.requests || [];
@@ -2200,6 +2239,107 @@
     } catch (error) {
       toast(error.message, "error");
     }
+  }
+
+  function adminUsersEndpoint() {
+    const parameters = new URLSearchParams({
+      page: String(state.adminUserPage),
+      pageSize: String(state.adminUserPageSize),
+    });
+    if (state.adminUserQuery) parameters.set("q", state.adminUserQuery);
+    return `/api/admin/users?${parameters}`;
+  }
+
+  function applyAdminUsersResult(result) {
+    const pagination = result.pagination || {};
+    state.users = result.users || [];
+    state.adminUserPage = Math.max(1, Number(pagination.page) || 1);
+    state.adminUserPageSize = Number(pagination.pageSize) || 25;
+    state.adminUserTotal = Math.max(0, Number(pagination.total) || 0);
+    state.adminUserAccountTotal = Math.max(0, Number(pagination.accountTotal) || state.adminUserTotal);
+    state.adminUserTotalPages = Math.max(1, Number(pagination.totalPages) || 1);
+  }
+
+  async function loadAdminUsers() {
+    const requestId = ++state.adminUserRequest;
+    const result = await api(adminUsersEndpoint());
+    if (requestId !== state.adminUserRequest) return;
+    applyAdminUsersResult(result);
+    renderUsers();
+    renderAdminOverview();
+  }
+
+  function adminSearchMatch(item, query, fields) {
+    const normalized = query.trim().toLocaleLowerCase("ar").replace(/^#/, "");
+    if (!normalized) return true;
+    return fields.some((field) => String(item[field] ?? "").toLocaleLowerCase("ar").includes(normalized));
+  }
+
+  function pagedCollection(items, query, fields, pageKey, pageSizeKey) {
+    const filtered = items.filter((item) => adminSearchMatch(item, query, fields));
+    const pageSize = Number(state[pageSizeKey]) || 25;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const page = Math.min(totalPages, Math.max(1, Number(state[pageKey]) || 1));
+    state[pageKey] = page;
+    return {
+      rows: filtered.slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pageSize,
+      total: filtered.length,
+      totalPages,
+    };
+  }
+
+  function paginationSequence(page, totalPages) {
+    const pages = new Set([1, totalPages, page - 2, page - 1, page, page + 1, page + 2]);
+    const valid = [...pages].filter((value) => value >= 1 && value <= totalPages).sort((first, second) => first - second);
+    const sequence = [];
+    valid.forEach((value, index) => {
+      if (index && value - valid[index - 1] > 1) sequence.push("…");
+      sequence.push(value);
+    });
+    return sequence;
+  }
+
+  function renderAdminPagination(selector, model, onPage, onPageSize) {
+    const container = $(selector);
+    const bar = make("nav", "admin-pagination");
+    bar.setAttribute("aria-label", "التنقل بين الصفحات");
+    const summary = make("div", "pagination-summary");
+    const select = make("select", "pagination-size");
+    select.setAttribute("aria-label", "عدد العناصر في الصفحة");
+    [10, 25, 50, 100].forEach((size) => {
+      const option = make("option", "", String(size));
+      option.value = String(size);
+      option.selected = size === model.pageSize;
+      select.append(option);
+    });
+    select.addEventListener("change", () => onPageSize(Number(select.value)));
+    summary.append(document.createTextNode("عرض "), select, document.createTextNode(` من أصل ${model.total}`));
+    const controls = make("div", "pagination-controls");
+    const previous = make("button", "pagination-step", "السابق");
+    previous.type = "button";
+    previous.disabled = model.page <= 1;
+    previous.addEventListener("click", () => onPage(model.page - 1));
+    controls.append(previous);
+    paginationSequence(model.page, model.totalPages).forEach((value) => {
+      if (value === "…") {
+        controls.append(make("span", "pagination-ellipsis", value));
+        return;
+      }
+      const pageButton = make("button", `pagination-page${value === model.page ? " is-active" : ""}`, String(value));
+      pageButton.type = "button";
+      if (value === model.page) pageButton.setAttribute("aria-current", "page");
+      pageButton.addEventListener("click", () => onPage(value));
+      controls.append(pageButton);
+    });
+    const next = make("button", "pagination-step", "التالي");
+    next.type = "button";
+    next.disabled = model.page >= model.totalPages;
+    next.addEventListener("click", () => onPage(model.page + 1));
+    controls.append(next);
+    bar.append(summary, controls);
+    container.replaceChildren(bar);
   }
 
   function setAdminTab(tab) {
@@ -2331,7 +2471,7 @@
     const pendingRequests = state.adminTranslationRequests.filter((request) => request.status === "pending").length;
     const metrics = [
       ["التعريبات", state.adminTranslations.length, "download", "translations"],
-      ["المستخدمون", state.users.length, "user", "users"],
+      ["المستخدمون", state.adminUserAccountTotal, "user", "users"],
       ["فواتير معلقة", pendingInvoices, "receipt", "invoices"],
       ["طلبات تعريب", pendingRequests, "gamepad", "requests"],
     ];
@@ -2671,11 +2811,26 @@
 
   function renderAdminTranslations() {
     const list = $("#admin-translations");
-    if (!state.adminTranslations.length) {
-      list.replaceChildren(make("p", "empty-row", "لا توجد تعريبات."));
+    const model = pagedCollection(
+      state.adminTranslations,
+      state.adminTranslationQuery,
+      ["id", "title", "slug", "description"],
+      "adminTranslationPage",
+      "adminTranslationPageSize",
+    );
+    renderAdminPagination("#admin-translations-pagination", model, (page) => {
+      state.adminTranslationPage = page;
+      renderAdminTranslations();
+    }, (pageSize) => {
+      state.adminTranslationPageSize = pageSize;
+      state.adminTranslationPage = 1;
+      renderAdminTranslations();
+    });
+    if (!model.rows.length) {
+      list.replaceChildren(make("p", "empty-row", state.adminTranslationQuery ? "لا توجد تعريبات مطابقة للبحث." : "لا توجد تعريبات."));
       return;
     }
-    list.replaceChildren(...state.adminTranslations.map((item) => {
+    list.replaceChildren(...model.rows.map((item) => {
       const row = make("article", "admin-row");
       const info = make("div", "admin-row-info");
       info.append(make("strong", "", item.title));
@@ -2848,11 +3003,26 @@
 
   function renderAdminNews() {
     const list = $("#admin-news");
-    if (!state.adminNews.length) {
-      list.replaceChildren(make("p", "empty-row", "لا توجد أخبار."));
+    const model = pagedCollection(
+      state.adminNews,
+      state.adminNewsQuery,
+      ["id", "title", "body"],
+      "adminNewsPage",
+      "adminNewsPageSize",
+    );
+    renderAdminPagination("#admin-news-pagination", model, (page) => {
+      state.adminNewsPage = page;
+      renderAdminNews();
+    }, (pageSize) => {
+      state.adminNewsPageSize = pageSize;
+      state.adminNewsPage = 1;
+      renderAdminNews();
+    });
+    if (!model.rows.length) {
+      list.replaceChildren(make("p", "empty-row", state.adminNewsQuery ? "لا توجد أخبار مطابقة للبحث." : "لا توجد أخبار."));
       return;
     }
-    list.replaceChildren(...state.adminNews.map((post) => {
+    list.replaceChildren(...model.rows.map((post) => {
       const row = make("article", "admin-row news-admin-row");
       const info = make("div", "admin-row-info");
       info.append(
@@ -3077,8 +3247,22 @@
 
   function renderUsers() {
     const list = $("#admin-users");
+    const model = {
+      page: state.adminUserPage,
+      pageSize: state.adminUserPageSize,
+      total: state.adminUserTotal,
+      totalPages: state.adminUserTotalPages,
+    };
+    renderAdminPagination("#admin-users-pagination", model, (page) => {
+      state.adminUserPage = page;
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    }, (pageSize) => {
+      state.adminUserPageSize = pageSize;
+      state.adminUserPage = 1;
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    });
     if (!state.users.length) {
-      list.replaceChildren(make("p", "empty-row", "لا يوجد مستخدمون."));
+      list.replaceChildren(make("p", "empty-row", state.adminUserQuery ? "لا توجد حسابات مطابقة للبحث." : "لا يوجد مستخدمون."));
       return;
     }
     list.replaceChildren(...state.users.map((user) => {
@@ -3269,6 +3453,24 @@
 
   $("#year").textContent = new Date().getFullYear();
   $("#catalog-search").addEventListener("input", renderCatalog);
+  $("#admin-translation-search").addEventListener("input", (event) => {
+    state.adminTranslationQuery = event.currentTarget.value;
+    state.adminTranslationPage = 1;
+    renderAdminTranslations();
+  });
+  $("#admin-news-search").addEventListener("input", (event) => {
+    state.adminNewsQuery = event.currentTarget.value;
+    state.adminNewsPage = 1;
+    renderAdminNews();
+  });
+  $("#admin-user-search").addEventListener("input", (event) => {
+    state.adminUserQuery = event.currentTarget.value.trim();
+    state.adminUserPage = 1;
+    clearTimeout(adminUserSearchTimer);
+    adminUserSearchTimer = setTimeout(() => {
+      loadAdminUsers().catch((error) => toast(error.message, "error"));
+    }, 250);
+  });
   $$('[data-filter]').forEach((button) => button.addEventListener("click", () => {
     state.filter = button.dataset.filter;
     $$('[data-filter]').forEach((candidate) => candidate.classList.toggle("is-active", candidate === button));

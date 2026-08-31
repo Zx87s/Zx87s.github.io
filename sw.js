@@ -1,7 +1,7 @@
 "use strict";
 
-const CACHE_NAME = "zx87s-public-v29";
-const CORE_ASSETS = ["./", "./index.html", "./styles.css?v=29", "./app.js?v=29", "./favicon.svg"];
+const CACHE_NAME = "zx87s-public-v30";
+const CORE_ASSETS = ["./", "./index.html", "./styles.css?v=30", "./app.js?v=30", "./favicon.svg"];
 const API_ORIGIN = "https://ta3reebat-memberships.zx87s.chatgpt.site";
 
 self.addEventListener("install", (event) => {
