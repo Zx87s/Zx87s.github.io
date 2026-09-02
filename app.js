@@ -26,6 +26,7 @@
   const PUBLIC_CACHE_TTL = 24 * 60 * 60 * 1000;
   const PUBLIC_CACHE_KEYS = { catalog: "zx87s_catalog_v1", news: "zx87s_news_v1", settings: "zx87s_settings_v1" };
   const DETAIL_CACHE_TTL = 10 * 60 * 1000;
+  const ADMIN_CACHE_TTL = 45 * 1000;
   const DETAIL_SESSION_PREFIX = "zx87s_detail_v2_";
   const MAX_PREFETCH_CONCURRENCY = 2;
   const detailCache = new Map();
@@ -33,6 +34,7 @@
   const detailPrefetchQueue = [];
   const queuedDetailReferences = new Set();
   let activeDetailPrefetches = 0;
+  let detailPrefetchScheduled = false;
   let detailPrefetchObserver = null;
 
   function visitorId() {
@@ -55,6 +57,8 @@
     downloads: [],
     catalog: [],
     news: [],
+    catalogLoaded: false,
+    newsLoaded: false,
     filter: "all",
     adminTranslations: [],
     adminNews: [],
@@ -107,7 +111,16 @@
   let activityTimer = null;
   let supportPollTimer = null;
   let adminUserSearchTimer = null;
+  let adminDataLoadedAt = 0;
+  let adminDataRequest = null;
+  let foregroundLoadingCount = 0;
+  let foregroundLoadingTimer = null;
   const supportObjectUrls = new Set();
+  const adminPreviewMedia = {
+    translationCover: null,
+    translationGallery: [],
+    newsCover: null,
+  };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -117,6 +130,38 @@
     if (text !== undefined) node.textContent = text;
     return node;
   };
+
+  function beginForegroundLoading(label = "جارٍ التحميل…") {
+    foregroundLoadingCount += 1;
+    const loader = $("#page-loading");
+    $("#page-loading-label").textContent = label;
+    document.body.setAttribute("aria-busy", "true");
+    if (!foregroundLoadingTimer && loader.hidden) {
+      foregroundLoadingTimer = window.setTimeout(() => {
+        foregroundLoadingTimer = null;
+        if (foregroundLoadingCount > 0) loader.hidden = false;
+      }, 160);
+    }
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      foregroundLoadingCount = Math.max(0, foregroundLoadingCount - 1);
+      if (foregroundLoadingCount) return;
+      if (foregroundLoadingTimer) window.clearTimeout(foregroundLoadingTimer);
+      foregroundLoadingTimer = null;
+      loader.hidden = true;
+      document.body.removeAttribute("aria-busy");
+    };
+  }
+
+  function scheduleIdle(task) {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(task, { timeout: 1500 });
+    } else {
+      window.setTimeout(task, 350);
+    }
+  }
 
   const ICON_MARKUP = {
     download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/>',
@@ -284,6 +329,12 @@
     state.downloads = [];
     state.invoices = [];
     state.adminInvoices = [];
+    state.adminTranslations = [];
+    state.adminNews = [];
+    state.users = [];
+    state.adminReports = [];
+    adminDataLoadedAt = 0;
+    adminDataRequest = null;
     state.translationRequests = [];
     state.adminTranslationRequests = [];
     state.afterAuth = null;
@@ -492,6 +543,9 @@
       loadNotifications(),
       prefetchSupportTickets(),
     ]);
+    if (state.user.tier === "owner" && !adminDataLoadedAt) {
+      scheduleIdle(() => loadAdminData().catch(() => {}));
+    }
   }
 
   const SUPPORT_CATEGORY_LABELS = {
@@ -986,8 +1040,14 @@
   function hydratePublicCache() {
     const catalog = readPublicCache(PUBLIC_CACHE_KEYS.catalog);
     const news = readPublicCache(PUBLIC_CACHE_KEYS.news);
-    if (catalog) state.catalog = catalog;
-    if (news) state.news = news;
+    if (catalog) {
+      state.catalog = catalog;
+      state.catalogLoaded = true;
+    }
+    if (news) {
+      state.news = news;
+      state.newsLoaded = true;
+    }
     try {
       const cached = JSON.parse(localStorage.getItem(PUBLIC_CACHE_KEYS.settings) || "null");
       if (cached?.settings && Date.now() - Number(cached.savedAt) <= PUBLIC_CACHE_TTL) {
@@ -1002,6 +1062,8 @@
   function applyPublicBootstrap(result) {
     state.catalog = Array.isArray(result.translations) ? result.translations : [];
     state.news = Array.isArray(result.news) ? result.news : [];
+    state.catalogLoaded = true;
+    state.newsLoaded = true;
     const settings = normalizeInterfaceSettings(result.settings);
     applyInterfaceSettings(settings);
     writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
@@ -1204,15 +1266,25 @@
     try {
       const result = await api(`/api/news${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.news = Array.isArray(result.news) ? result.news : [];
+      state.newsLoaded = true;
       writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
       renderNews();
     } catch (error) {
+      state.newsLoaded = true;
       if (!state.news.length) $("#news-grid").replaceChildren(make("p", "empty-row", error.message));
     }
   }
 
   function renderNews() {
     const grid = $("#news-grid");
+    if (!state.newsLoaded) {
+      grid.replaceChildren(...Array.from({ length: 3 }, () => {
+        const card = make("article", "news-card content-skeleton");
+        card.append(make("span", "skeleton-media"), make("span", "skeleton-lines"));
+        return card;
+      }));
+      return;
+    }
     if (!state.news.length) {
       grid.replaceChildren(make("p", "empty-row", "لا توجد أخبار منشورة."));
       return;
@@ -1245,10 +1317,13 @@
     try {
       const result = await api(`/api/translations${fresh ? `?v=${Date.now()}` : ""}`, { cache: fresh ? "no-store" : "default" });
       state.catalog = Array.isArray(result.translations) ? result.translations : [];
+      state.catalogLoaded = true;
       writePublicCache(PUBLIC_CACHE_KEYS.catalog, state.catalog);
       renderCatalog();
     } catch (error) {
+      state.catalogLoaded = true;
       if (!state.catalog.length) {
+        $("#catalog-grid").replaceChildren();
         $("#results-status").textContent = error.message;
         $("#empty-state").hidden = false;
       }
@@ -1272,8 +1347,18 @@
   }
 
   function renderCatalog() {
-    const items = visibleCatalog();
     const grid = $("#catalog-grid");
+    if (!state.catalogLoaded) {
+      grid.replaceChildren(...Array.from({ length: 6 }, () => {
+        const card = make("article", "catalog-card content-skeleton");
+        card.append(make("span", "skeleton-media"), make("span", "skeleton-lines"));
+        return card;
+      }));
+      $("#empty-state").hidden = true;
+      $("#results-status").textContent = "جارٍ تحميل التعريبات…";
+      return;
+    }
+    const items = visibleCatalog();
     detailPrefetchObserver?.disconnect();
     detailPrefetchObserver = null;
     grid.replaceChildren(...items.map(makeCatalogCard));
@@ -1428,7 +1513,13 @@
     if (queuedDetailReferences.has(key)) return;
     queuedDetailReferences.add(key);
     detailPrefetchQueue.push(reference);
-    drainDetailPrefetchQueue();
+    if (!detailPrefetchScheduled) {
+      detailPrefetchScheduled = true;
+      scheduleIdle(() => {
+        detailPrefetchScheduled = false;
+        drainDetailPrefetchQueue();
+      });
+    }
   }
 
   function observeTranslationPrefetch(card, reference) {
@@ -1454,6 +1545,7 @@
     state.replyingTo = null;
     const detail = $("#translation-detail");
     const warmResult = cachedTranslation(reference);
+    const finishLoading = warmResult ? () => {} : beginForegroundLoading("جارٍ فتح التعريب…");
     if (warmResult) {
       state.activeTranslation = warmResult.translation;
       state.comments = Array.isArray(warmResult.comments) ? warmResult.comments : [];
@@ -1485,6 +1577,8 @@
       } else {
         detail.replaceChildren(make("p", "empty-row", error.message));
       }
+    } finally {
+      finishLoading();
     }
   }
 
@@ -2212,9 +2306,16 @@
 
   async function openAdmin() {
     if (state.user?.tier !== "owner") return;
+    if (adminDataLoadedAt) renderAdminViews();
+    else renderAdminLoading();
     showDialog("admin-dialog");
     markActivityRead("admin").catch(() => {});
-    await loadAdminData();
+    const finishLoading = adminDataLoadedAt ? () => {} : beginForegroundLoading("جارٍ تجهيز لوحة Owner…");
+    try {
+      await loadAdminData();
+    } finally {
+      finishLoading();
+    }
   }
 
   async function openModeration() {
@@ -2230,7 +2331,36 @@
     else if (state.user?.tier === "mod") openModeration();
   }
 
-  async function loadAdminData() {
+  function renderAdminViews() {
+    renderAdminOverview();
+    renderAdminTranslations();
+    renderAdminNews();
+    renderUsers();
+    renderAdminReports();
+    renderAdminInvoices();
+    renderAdminTranslationRequests();
+    renderInterfaceForm();
+    renderTranslationPreview();
+    renderNewsPreview();
+  }
+
+  function renderAdminLoading() {
+    const overview = $("#admin-overview");
+    overview.className = "admin-loading-grid";
+    overview.replaceChildren(...Array.from({ length: 4 }, () => make("span", "admin-skeleton")));
+    ["#admin-translations", "#admin-news", "#admin-invoices", "#admin-users", "#admin-requests", "#admin-reports"].forEach((selector) => {
+      const list = $(selector);
+      if (list && !list.children.length) list.replaceChildren(make("p", "empty-row compact", "جارٍ تحميل البيانات…"));
+    });
+  }
+
+  async function loadAdminData({ fresh = false } = {}) {
+    if (!fresh && adminDataLoadedAt && Date.now() - adminDataLoadedAt < ADMIN_CACHE_TTL) {
+      renderAdminViews();
+      return true;
+    }
+    if (adminDataRequest) return adminDataRequest;
+    adminDataRequest = (async () => {
     try {
       const [translationResult, newsResult, userResult, reportResult, invoiceResult, requestResult] = await Promise.all([
         api("/api/admin/translations"),
@@ -2246,16 +2376,18 @@
       state.adminReports = reportResult.reports || [];
       state.adminInvoices = invoiceResult.invoices || [];
       state.adminTranslationRequests = requestResult.requests || [];
-      renderAdminOverview();
-      renderAdminTranslations();
-      renderAdminNews();
-      renderUsers();
-      renderAdminReports();
-      renderAdminInvoices();
-      renderAdminTranslationRequests();
-      renderInterfaceForm();
+      adminDataLoadedAt = Date.now();
+      renderAdminViews();
+      return true;
     } catch (error) {
       toast(error.message, "error");
+      return false;
+    }
+    })();
+    try {
+      return await adminDataRequest;
+    } finally {
+      adminDataRequest = null;
     }
   }
 
@@ -2485,6 +2617,7 @@
   }
 
   function renderAdminOverview() {
+    $("#admin-overview").className = "admin-overview";
     const pendingInvoices = state.adminInvoices.filter((invoice) => invoice.status === "pending").length;
     const pendingRequests = state.adminTranslationRequests.filter((request) => request.status === "pending").length;
     const metrics = [
@@ -2745,6 +2878,7 @@
     let uploadedDownloadKey = null;
     let recordSaved = false;
     submit.disabled = true;
+    const finishLoading = beginForegroundLoading("جارٍ حفظ التعريب…");
     $("#translation-message").textContent = "جارٍ الحفظ…";
     try {
       let coverKey = state.editing?.coverKey || null;
@@ -2816,7 +2950,7 @@
       recordSaved = true;
       resetTranslationForm();
       $("#translation-message").textContent = "تم الحفظ.";
-      await Promise.all([loadAdminData(), loadCatalog(true)]);
+      await Promise.all([loadAdminData({ fresh: true }), loadCatalog(true)]);
     } catch (error) {
       if (!recordSaved) {
         await Promise.all([cleanupImages(newKeys), cleanupTranslationFile(uploadedDownloadKey)]);
@@ -2824,6 +2958,7 @@
       $("#translation-message").textContent = error.message;
     } finally {
       submit.disabled = false;
+      finishLoading();
     }
   }
 
@@ -2881,8 +3016,118 @@
     }));
   }
 
+  function releasePreviewUrl(value) {
+    if (value) URL.revokeObjectURL(value);
+  }
+
+  function replacePreviewMedia(kind, files) {
+    if (kind === "translationGallery") {
+      adminPreviewMedia.translationGallery.forEach(releasePreviewUrl);
+      adminPreviewMedia.translationGallery = Array.from(files || []).slice(0, 4).map((file) => URL.createObjectURL(file));
+      return;
+    }
+    releasePreviewUrl(adminPreviewMedia[kind]);
+    adminPreviewMedia[kind] = files?.[0] ? URL.createObjectURL(files[0]) : null;
+  }
+
+  function existingTranslationPreviewImages(item) {
+    const cover = item?.coverUrl || (item?.coverKey ? `${API_BASE}/api/media/${encodeURIComponent(item.coverKey)}` : null);
+    const gallery = Array.isArray(item?.galleryUrls) && item.galleryUrls.length
+      ? item.galleryUrls.slice(0, 4)
+      : Array.isArray(item?.galleryKeys)
+        ? item.galleryKeys.slice(0, 4).map((key) => `${API_BASE}/api/media/${encodeURIComponent(key)}`)
+        : [];
+    return { cover, gallery };
+  }
+
+  function renderTranslationPreview() {
+    const form = $("#translation-form");
+    const root = $("#translation-live-preview");
+    if (!form || !root) return;
+    const existing = existingTranslationPreviewImages(state.editing);
+    const item = {
+      title: form.elements.title.value.trim() || "اسم التعريب",
+      description: form.elements.description.value.trim() || "سيظهر وصف التعريب هنا قبل النشر.",
+      access: form.elements.access.value,
+      isPublished: form.elements.isPublished.checked,
+      isFeatured: form.elements.isFeatured.checked,
+      isNewRelease: form.elements.isNewRelease.checked,
+      hasNewUpdate: form.elements.hasNewUpdate.checked,
+      isExperimental: form.elements.isExperimental.checked,
+      publishedAt: form.elements.publishedAt.value || new Date().toISOString(),
+      coverUrl: adminPreviewMedia.translationCover || existing.cover,
+      galleryUrls: adminPreviewMedia.translationGallery.length ? adminPreviewMedia.translationGallery : existing.gallery,
+    };
+    const cover = make("div", "preview-cover");
+    if (item.coverUrl) {
+      const image = make("img");
+      image.src = item.coverUrl;
+      image.alt = `معاينة غلاف ${item.title}`;
+      image.decoding = "async";
+      cover.append(image);
+    } else {
+      cover.append(make("span", "preview-cover-empty", "صورة الغلاف"));
+    }
+    cover.append(make("span", `preview-cover-state${item.isPublished ? "" : " draft"}`, item.isPublished ? "جاهز للنشر" : "مسودة"));
+    const body = make("div", "translation-preview-body");
+    const badges = make("div", "preview-badges");
+    badges.append(make("span", `type-badge ${item.access}`, item.access === "vip" ? "VIP" : "مجاني"));
+    if (item.isFeatured) badges.append(makeIconText("span", "featured-badge", "مميز", "star"));
+    badges.append(...translationTagNodes(item));
+    body.append(badges, make("h4", "", item.title), make("p", "", item.description));
+    const meta = make("div", "preview-meta");
+    meta.append(make("span", "", `النشر: ${formatDate(item.publishedAt)}`), make("span", "", item.isPublished ? "ظاهر للزوار" : "غير منشور"));
+    body.append(meta);
+    const gallery = make("div", "preview-gallery");
+    for (let index = 0; index < 4; index += 1) {
+      const figure = make("figure");
+      const source = item.galleryUrls[index];
+      if (source) {
+        const image = make("img");
+        image.src = source;
+        image.alt = `معاينة الصورة ${index + 1}`;
+        image.decoding = "async";
+        figure.append(image);
+      } else {
+        figure.append(make("span", "preview-cover-empty", "+"));
+      }
+      figure.append(make("figcaption", "", `الصورة ${index + 1}`));
+      gallery.append(figure);
+    }
+    body.append(gallery, make("span", `preview-download${item.access === "vip" ? " is-locked" : ""}`, "تنزيل التعريب"));
+    root.replaceChildren(cover, body);
+  }
+
+  function renderNewsPreview() {
+    const form = $("#news-form");
+    const root = $("#news-live-preview");
+    if (!form || !root) return;
+    const title = form.elements.title.value.trim() || "عنوان الخبر";
+    const bodyText = form.elements.body.value.trim() || "سيظهر نص الخبر هنا قبل نشره في الصفحة الرئيسية وإرساله إلى الإشعارات.";
+    const selectedCover = adminPreviewMedia.newsCover;
+    const existingCover = state.editingNews?.coverUrl || (state.editingNews?.coverKey ? `${API_BASE}/api/media/${encodeURIComponent(state.editingNews.coverKey)}` : null);
+    const coverUrl = selectedCover || (form.elements.removeCover.checked ? null : existingCover);
+    const published = form.elements.isPublished.checked;
+    const cover = make("div", "preview-cover");
+    if (coverUrl) {
+      const image = make("img");
+      image.src = coverUrl;
+      image.alt = `معاينة صورة ${title}`;
+      image.decoding = "async";
+      cover.append(image);
+    } else {
+      cover.append(make("span", "preview-cover-empty", "صورة الخبر اختيارية"));
+    }
+    cover.append(make("span", `preview-cover-state${published ? "" : " draft"}`, published ? "منشور" : "مسودة"));
+    const content = make("div", "news-preview-body");
+    content.append(make("time", "", formatDate(new Date())), make("h4", "", title), make("p", "", bodyText));
+    root.replaceChildren(cover, content);
+  }
+
   function editTranslation(item) {
     state.editing = item;
+    replacePreviewMedia("translationCover", []);
+    replacePreviewMedia("translationGallery", []);
     const form = $("#translation-form");
     form.elements.cover.value = "";
     form.elements.gallery.value = "";
@@ -2903,6 +3148,8 @@
     form.elements.isExperimental.checked = item.isExperimental;
     form.elements.publishedAt.value = item.publishedAt ? toDateTimeLocal(item.publishedAt) : "";
     syncDownloadFields();
+    $("#translation-editor-title").textContent = `تعديل: ${item.title}`;
+    renderTranslationPreview();
     $("#cancel-edit").hidden = false;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -2923,6 +3170,8 @@
 
   function resetTranslationForm() {
     state.editing = null;
+    replacePreviewMedia("translationCover", []);
+    replacePreviewMedia("translationGallery", []);
     const form = $("#translation-form");
     form.reset();
     form.elements.id.value = "";
@@ -2936,6 +3185,8 @@
     updateFileLabel(form.elements.gallery);
     updateFileLabel(form.elements.downloadFile);
     syncDownloadFields();
+    $("#translation-editor-title").textContent = "إضافة تعريب جديد";
+    renderTranslationPreview();
     $("#cancel-edit").hidden = true;
   }
 
@@ -2961,7 +3212,7 @@
     try {
       await api(`/api/admin/translations/${item.id}`, { method: "DELETE" });
       if (state.editing?.id === item.id) resetTranslationForm();
-      await Promise.all([loadAdminData(), loadCatalog(true)]);
+      await Promise.all([loadAdminData({ fresh: true }), loadCatalog(true)]);
       toast("تم حذف التعريب.");
     } catch (error) {
       toast(error.message, "error");
@@ -2976,6 +3227,7 @@
     let uploadedKey = null;
     let recordSaved = false;
     submit.disabled = true;
+    const finishLoading = beginForegroundLoading("جارٍ حفظ الخبر…");
     $("#news-message").textContent = "جارٍ حفظ الخبر…";
     try {
       let coverKey = state.editingNews?.coverKey || null;
@@ -3010,12 +3262,13 @@
       recordSaved = true;
       resetNewsForm();
       $("#news-message").textContent = "تم حفظ الخبر.";
-      await Promise.all([loadAdminData(), loadNews(true), loadNotifications()]);
+      await Promise.all([loadAdminData({ fresh: true }), loadNews(true), loadNotifications()]);
     } catch (error) {
       if (!recordSaved && uploadedKey) await cleanupImages([uploadedKey]);
       $("#news-message").textContent = error.message;
     } finally {
       submit.disabled = false;
+      finishLoading();
     }
   }
 
@@ -3062,6 +3315,7 @@
 
   function editNews(post) {
     state.editingNews = post;
+    replacePreviewMedia("newsCover", []);
     const form = $("#news-form");
     form.elements.id.value = post.id;
     form.elements.title.value = post.title;
@@ -3070,17 +3324,22 @@
     form.elements.removeCover.checked = false;
     form.elements.newsCover.value = "";
     updateFileLabel(form.elements.newsCover);
+    $("#news-editor-title").textContent = `تعديل: ${post.title}`;
+    renderNewsPreview();
     $("#cancel-news-edit").hidden = false;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function resetNewsForm() {
     state.editingNews = null;
+    replacePreviewMedia("newsCover", []);
     const form = $("#news-form");
     form.reset();
     form.elements.id.value = "";
     form.elements.isPublished.checked = true;
     updateFileLabel(form.elements.newsCover);
+    $("#news-editor-title").textContent = "إضافة خبر جديد";
+    renderNewsPreview();
     $("#cancel-news-edit").hidden = true;
   }
 
@@ -3092,7 +3351,7 @@
       writePublicCache(PUBLIC_CACHE_KEYS.news, state.news);
       renderNews();
       if (state.editingNews?.id === post.id) resetNewsForm();
-      await Promise.all([loadAdminData(), loadNews(true), loadNotifications()]);
+      await Promise.all([loadAdminData({ fresh: true }), loadNews(true), loadNotifications()]);
       toast("تم حذف الخبر.");
     } catch (error) {
       toast(error.message, "error");
@@ -3162,7 +3421,7 @@
         method: "PATCH",
         body: JSON.stringify({ action, note }),
       });
-      await loadAdminData();
+      await loadAdminData({ fresh: true });
       toast(action === "approve" ? "تمت الموافقة وتفعيل VIP لمدة 30 يومًا." : "تم رفض الفاتورة.");
     } catch (error) {
       toast(error.message, "error");
@@ -3328,7 +3587,7 @@
   async function updateMembership(id, action, days = 30) {
     try {
       await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ action, days }) });
-      await loadAdminData();
+      await loadAdminData({ fresh: true });
       toast(action === "grant" ? "تم منح VIP." : "تم إلغاء VIP.");
     } catch (error) {
       toast(error.message, "error");
@@ -3344,7 +3603,7 @@
         method: "PATCH",
         body: JSON.stringify({ action: "set_role", role }),
       });
-      await loadAdminData();
+      await loadAdminData({ fresh: true });
       toast(role === "moderator" ? "تم تعيين الحساب Mod للدعم الفني." : "تمت إزالة صلاحية Mod.");
     } catch (error) {
       toast(error.message, "error");
@@ -3370,7 +3629,7 @@
         toast("تم تغيير كلمة المرور وإلغاء الجلسات. سجّل الدخول من جديد.");
         return;
       }
-      await loadAdminData();
+      await loadAdminData({ fresh: true });
       toast("تم تغيير كلمة المرور وإلغاء جلسات الحساب دون تغيير VIP.");
     } catch (error) {
       toast(error.message, "error");
@@ -3387,7 +3646,7 @@
         method: "DELETE",
         body: JSON.stringify({ confirmationUsername }),
       });
-      await loadAdminData();
+      await loadAdminData({ fresh: true });
       toast("تم مسح الحساب.");
     } catch (error) {
       toast(error.message, "error");
@@ -3547,9 +3806,27 @@
   }));
   $("#cancel-edit").addEventListener("click", resetTranslationForm);
   $("#cancel-news-edit").addEventListener("click", resetNewsForm);
-  $("#translation-form").elements.cover.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
-  $("#translation-form").elements.gallery.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
-  $("#news-form").elements.newsCover.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
+  $("#translation-form").addEventListener("input", (event) => {
+    if (event.target.type !== "file") renderTranslationPreview();
+  });
+  $("#news-form").addEventListener("input", (event) => {
+    if (event.target.type !== "file") renderNewsPreview();
+  });
+  $("#translation-form").elements.cover.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("translationCover", event.currentTarget.files);
+    renderTranslationPreview();
+  });
+  $("#translation-form").elements.gallery.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("translationGallery", event.currentTarget.files);
+    renderTranslationPreview();
+  });
+  $("#news-form").elements.newsCover.addEventListener("change", (event) => {
+    updateFileLabel(event.currentTarget);
+    replacePreviewMedia("newsCover", event.currentTarget.files);
+    renderNewsPreview();
+  });
   $("#translation-request-form").elements.requestImage.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
   $("#translation-form").elements.downloadFile.addEventListener("change", (event) => {
     updateFileLabel(event.currentTarget);
@@ -3591,6 +3868,8 @@
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
   enhancePasswordInputs();
   syncDownloadFields();
+  renderTranslationPreview();
+  renderNewsPreview();
   hydratePublicCache();
   updateHeader();
   startPresenceTracking();

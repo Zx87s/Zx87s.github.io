@@ -11,10 +11,14 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=31" />
-    <script src="./app.js?v=31" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=32" />
+    <script src="./app.js?v=32" defer></script>
   </head>
   <body>
+    <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
+      <span class="page-loading-bar" aria-hidden="true"></span>
+      <span class="page-loading-label"><i aria-hidden="true"></i><b id="page-loading-label">جارٍ التحميل…</b></span>
+    </div>
     <header class="site-header">
       <div class="shell header-inner">
         <a class="brand" href="#top"><span>تعريبات</span><strong>Zx87s</strong></a>
@@ -292,7 +296,9 @@
           <button class="tab" type="button" data-admin-tab="interface">تخصيص الواجهة</button>
         </div>
         <section id="admin-translations-panel">
-          <form id="translation-form" class="translation-form">
+          <div class="admin-editor-layout">
+          <form id="translation-form" class="translation-form admin-editor-form">
+            <div class="editor-form-heading span-2"><div><span>محرر التعريب</span><h3 id="translation-editor-title">إضافة تعريب جديد</h3></div><small>تظهر المعاينة مباشرة قبل الحفظ</small></div>
             <input name="id" type="hidden" />
             <label>اسم التعريب<input name="title" maxlength="120" required /></label>
             <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
@@ -313,6 +319,12 @@
             <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور</label>
             <div class="form-actions span-2"><button class="button primary" type="submit">حفظ التعريب</button><button class="button ghost" id="cancel-edit" type="button" hidden>إلغاء التعديل</button></div>
           </form>
+          <aside class="editor-preview" aria-labelledby="translation-preview-heading">
+            <div class="editor-preview-heading"><div><span>معاينة مباشرة</span><h3 id="translation-preview-heading">قبل نشر التعريب</h3></div><span class="preview-live"><i></i> مباشر</span></div>
+            <div id="translation-live-preview" class="translation-live-preview"></div>
+            <p class="preview-note">هذه هي هيئة المحتوى قبل ظهوره للأعضاء. الصور والوسوم والفئة تتحدث فورًا.</p>
+          </aside>
+          </div>
           <p class="form-message" id="translation-message" role="status"></p>
           <div class="admin-list-toolbar">
             <label class="admin-search"><span>بحث التعريبات</span><input id="admin-translation-search" type="search" maxlength="120" placeholder="ابحث بالاسم الكامل أو رقم التعريب" autocomplete="off" /></label>
@@ -321,7 +333,9 @@
           <div id="admin-translations-pagination"></div>
         </section>
         <section id="admin-news-panel" hidden>
-          <form id="news-form" class="translation-form news-form">
+          <div class="admin-editor-layout news-editor-layout">
+          <form id="news-form" class="translation-form news-form admin-editor-form">
+            <div class="editor-form-heading span-2"><div><span>محرر الخبر</span><h3 id="news-editor-title">إضافة خبر جديد</h3></div><small>راجع النص والصورة قبل الإرسال</small></div>
             <input name="id" type="hidden" />
             <label class="span-2">عنوان الخبر<input name="title" maxlength="140" required /></label>
             <label class="span-2">نص الخبر<textarea name="body" rows="5" maxlength="4000" required></textarea></label>
@@ -330,6 +344,12 @@
             <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور وإرسال إشعار للحسابات</label>
             <div class="form-actions span-2"><button class="button primary" type="submit">نشر الخبر</button><button class="button ghost" id="cancel-news-edit" type="button" hidden>إلغاء التعديل</button></div>
           </form>
+          <aside class="editor-preview" aria-labelledby="news-preview-heading">
+            <div class="editor-preview-heading"><div><span>معاينة مباشرة</span><h3 id="news-preview-heading">قبل نشر الخبر</h3></div><span class="preview-live"><i></i> مباشر</span></div>
+            <div id="news-live-preview" class="news-live-preview"></div>
+            <p class="preview-note">يظهر الخبر هنا بالشكل نفسه تقريبًا الذي سيراه الزوار في الرئيسية.</p>
+          </aside>
+          </div>
           <p class="form-message" id="news-message" role="status"></p>
           <div class="admin-list-toolbar">
             <label class="admin-search"><span>بحث الأخبار</span><input id="admin-news-search" type="search" maxlength="140" placeholder="ابحث بعنوان الخبر أو نصه" autocomplete="off" /></label>
