@@ -788,5 +788,34 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
   .page-loading-bar::after, .page-loading-label i, .admin-skeleton::after, .content-skeleton::after { animation: none !important; }
 }
 
+.library-section { padding-block-start: 38px; }
+.library-section .section-heading h1 { margin: 5px 0 0; font-size: clamp(var(--section-title-min),var(--section-title-fluid),var(--section-title-max)); line-height: 1.3; }
+.memberships-section { padding-block: 52px 72px; background-image: none; border-top: 1px solid var(--line); }
+.memberships-section::after { content: none; }
+.membership-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; margin-block-start: 26px; }
+.membership-free-card, .membership-grid .vip-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 24px; padding: clamp(22px,3vw,34px); background-color: var(--surface); }
+.membership-grid .vip-card { max-width: none; border-color: rgba(248,195,74,.44); }
+.membership-kicker, .membership-grid .vip-kicker { margin: 0; color: var(--muted); font-size: .9rem; font-weight: 800; }
+.membership-grid .vip-kicker { color: var(--gold); }
+.membership-grid h3 { position: relative; margin: 8px 0 0; font-size: 1.5rem; }
+.membership-grid .membership-price { margin: 16px 0 0; font-size: 1.8rem; font-weight: 850; color: var(--text); }
+.membership-price span { color: var(--muted); font-size: .9rem; font-weight: 500; }
+.membership-features { position: relative; display: grid; gap: 12px; flex: 1; margin-block: 24px; padding-inline-start: 22px; color: #d4d4d8; font-size: 1rem; }
+.membership-features li::marker { color: #8d8d96; }
+.vip-card .membership-features li::marker { color: var(--gold); }
+.history-row .history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.history-remove { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #18181b; color: #a1a1aa; font-size: 1.3rem; line-height: 1; }
+.history-remove:hover { border-color: #ef4444; color: #fca5a5; }
+.history-remove:disabled { opacity: .4; cursor: wait; }
+.admin-translation-content { display: flex; flex: 1; min-width: 0; align-items: center; gap: 16px; }
+.admin-translation-thumb { display: grid; flex: 0 0 112px; width: 112px; aspect-ratio: 16/10; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #24242a; color: #71717a; }
+.admin-translation-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.admin-translation-thumb .ui-icon { width: 28px; height: 28px; }
+.preview-badges .type-badge, .preview-badges .featured-badge { position: static; }
+@media (max-width: 640px) {
+  .membership-grid { grid-template-columns: 1fr; }
+  .admin-translation-thumb { flex-basis: 80px; width: 80px; }
+  .admin-translation-content { gap: 10px; align-items: flex-start; }
+}
 /* Keep permission-gated controls hidden after icons add display utilities. */
 [hidden] { display: none !important; }

@@ -11,8 +11,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=32" />
-    <script src="./app.js?v=32" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=33" />
+    <script src="./app.js?v=33" defer></script>
   </head>
   <body>
     <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
@@ -52,38 +52,10 @@
     </header>
 
     <main id="top">
-      <section class="hero">
-        <div class="hero-glow" aria-hidden="true"></div>
-        <div class="shell hero-grid">
-          <div class="hero-copy">
-            <p class="eyebrow">مكتبة تعريبات Zx87s</p>
-            <h1>التعريب الذي<br /><span>تبحث عنه.</span></h1>
-            <p class="hero-description">تعريبات عربية للألعاب، مجانية ومخصصة لأعضاء VIP.</p>
-          </div>
-          <aside class="vip-card" id="vip">
-            <span class="crown" aria-hidden="true">♛</span>
-            <p class="vip-kicker">عضوية VIP</p>
-            <h2><strong>3</strong> دولار</h2>
-            <p>وصول لمدة 30 يومًا</p>
-            <button class="paypal-button" id="vip-support-button" type="button">الدعم عبر PayPal <b>3 USD</b></button>
-            <button class="invoice-shortcut" id="invoice-shortcut" type="button">إرسال رقم فاتورة PayPal</button>
-          </aside>
-        </div>
-      </section>
-
-      <section class="news-section" id="news">
-        <div class="shell">
-          <div class="section-heading">
-            <div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div>
-          </div>
-          <div class="news-grid" id="news-grid" aria-live="polite"></div>
-        </div>
-      </section>
-
       <section class="library-section" id="library">
         <div class="shell">
           <div class="section-heading">
-            <div><p class="eyebrow">المكتبة</p><h2>التعريبات</h2></div>
+            <div><p class="eyebrow">تعريبات Zx87s</p><h1>مكتبة التعريبات</h1></div>
             <div class="filter-group" aria-label="تصفية المكتبة">
               <button class="filter is-active" type="button" data-filter="all">الكل</button>
               <button class="filter" type="button" data-filter="free">مجاني</button>
@@ -97,6 +69,46 @@
           <p class="results-status" id="results-status" role="status"></p>
           <div class="catalog-grid" id="catalog-grid"></div>
           <div class="empty-state" id="empty-state" hidden><h3>لا توجد تعريبات</h3></div>
+        </div>
+      </section>
+      <section class="news-section" id="news">
+        <div class="shell">
+          <div class="section-heading">
+            <div><p class="eyebrow">آخر المستجدات</p><h2>أخبار التعريبات</h2></div>
+          </div>
+          <div class="news-grid" id="news-grid" aria-live="polite"></div>
+        </div>
+      </section>
+      <section class="hero memberships-section" aria-labelledby="memberships-title">
+        <div class="shell">
+          <div class="section-heading"><div><p class="eyebrow">العضويات</p><h2 id="memberships-title">اختر عضويتك</h2></div></div>
+          <div class="membership-grid">
+            <article class="membership-free-card">
+              <p class="membership-kicker">للجميع</p>
+              <h3>عضوية مجانية</h3>
+              <p class="membership-price">مجانًا</p>
+              <ul class="membership-features">
+                <li>تنزيل جميع التعريبات المجانية بعد تسجيل الدخول</li>
+                <li>مشاهدة تفاصيل وصور جميع التعريبات</li>
+                <li>التعليق والرد والتفاعل مع المجتمع</li>
+                <li>إرسال طلبات التعريب وتذاكر الدعم الفني</li>
+              </ul>
+              <button class="button ghost wide" id="free-membership-button" type="button">إنشاء حساب مجاني</button>
+            </article>
+            <article class="vip-card" id="vip">
+              <p class="vip-kicker">عضوية VIP</p>
+              <h3>المزيد من التعريبات</h3>
+              <p class="membership-price"><strong>3</strong> دولار <span>/ 30 يومًا</span></p>
+              <ul class="membership-features">
+                <li>جميع مزايا العضوية المجانية</li>
+                <li>تنزيل التعريبات المخصصة لفئة VIP</li>
+                <li>اسم ذهبي وشارة VIP في الحساب والتعليقات</li>
+                <li>تفعيل العضوية بعد مراجعة فاتورة الدعم</li>
+              </ul>
+              <button class="paypal-button" id="vip-support-button" type="button">الدعم عبر PayPal <b>3 USD</b></button>
+              <button class="invoice-shortcut" id="invoice-shortcut" type="button">إرسال رقم فاتورة PayPal</button>
+            </article>
+          </div>
         </div>
       </section>
     </main>

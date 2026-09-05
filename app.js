@@ -19,7 +19,7 @@
     sectionTitleScale: 100,
     cardTitleScale: 100,
     bodyTextScale: 100,
-    sectionOrder: ["hero", "news", "library"],
+    sectionOrder: ["library", "news", "hero"],
     showNews: true,
     showVip: true,
   });
@@ -365,6 +365,7 @@
   }
 
   function updateHeader() {
+    $("#free-membership-button").textContent = state.user ? "حسابي" : "إنشاء حساب مجاني";
     setIconText($("#account-button"), "user", state.user ? "حسابي" : "دخول");
     const adminButton = $("#admin-button");
     const adminBadge = $("#admin-badge");
@@ -1099,7 +1100,7 @@
       sectionTitleScale: number("sectionTitleScale", 70, 150),
       cardTitleScale: number("cardTitleScale", 65, 150),
       bodyTextScale: number("bodyTextScale", 75, 135),
-      sectionOrder: validOrder ? order : [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
+      sectionOrder: validOrder && order.join() !== "hero,news,library" ? order : [...DEFAULT_INTERFACE_SETTINGS.sectionOrder],
       showNews: source.showNews !== false,
       showVip: source.showVip !== false,
     };
@@ -1401,6 +1402,7 @@
     const stats = make("div", "card-stats");
     stats.append(
       makeIconText("span", "stat-line downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeViewStat(item),
       makeIconText("span", "stat-line comments-count", `${Number(item.commentCount) || 0} تعليق`, "comments"),
       makeIconText("time", "stat-line published-date", formatDate(item.publishedAt), "calendar"),
     );
@@ -1537,6 +1539,31 @@
     detailPrefetchObserver.observe(card);
   }
 
+  function makeViewStat(item) {
+    const node = makeIconText("span", "stat-line view-count", `${Number(item.viewCount) || 0} مشاهدة`, "eye");
+    node.dataset.viewTranslation = String(item.id);
+    return node;
+  }
+
+  const viewRequests = new Map();
+  async function recordTranslationView(id) {
+    if (viewRequests.has(id)) return viewRequests.get(id);
+    const pending = api(`/api/translations/${id}/view`, {
+      method: "POST", body: JSON.stringify({ visitorId: VISITOR_ID }),
+    }).then(({ viewCount }) => {
+      const count = Number(viewCount) || 0;
+      for (const item of [...state.catalog, ...state.adminTranslations, state.activeTranslation]) {
+        if (item?.id === id) item.viewCount = count;
+      }
+      for (const entry of detailCache.values()) {
+        if (entry.data.translation?.id === id) entry.data.translation.viewCount = count;
+      }
+      $$(`[data-view-translation="${id}"]`).forEach((node) => setIconText(node, "eye", `${count} مشاهدة`));
+    }).finally(() => viewRequests.delete(id));
+    viewRequests.set(id, pending);
+    return pending;
+  }
+
   async function openTranslation(reference, { syncUrl = true } = {}) {
     const catalogItem = state.catalog.find((item) => item.id === reference || item.slug === reference);
     if (syncUrl && catalogItem) setTranslationRoute(catalogItem);
@@ -1568,6 +1595,7 @@
       state.commentsLoading = false;
       document.title = `${state.activeTranslation.title} | تعريبات Zx87s`;
       renderTranslationDetail();
+      recordTranslationView(state.activeTranslation.id).catch(() => {});
     } catch (error) {
       if (requestId !== state.detailRequest || !$("#translation-dialog").open) return;
       state.commentsLoading = false;
@@ -1608,6 +1636,7 @@
     const stats = make("div", "detail-stats");
     stats.append(
       makeIconText("span", "stat-line detail-download-count", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeViewStat(item),
       makeIconText("span", "stat-line detail-comment-count", `${Number(item.commentCount) || state.comments.length || 0} تعليق`, "comments"),
       makeIconText("time", "stat-line detail-published-date", `نُشر في ${formatDate(item.publishedAt)}`, "calendar"),
     );
@@ -2255,7 +2284,21 @@
       const row = make("div", "history-row");
       const info = make("div");
       info.append(make("strong", "", download.title), make("span", "", formatDate(download.downloadedAt)));
-      row.append(info, make("span", `mini-badge ${download.access}`, download.access === "vip" ? "VIP" : "مجاني"));
+      const actions = make("div", "history-actions");
+      const remove = make("button", "history-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `حذف ${download.title} من سجل التحميلات`);
+      remove.title = "حذف من سجل التحميلات";
+      remove.addEventListener("click", async () => {
+        remove.disabled = true;
+        try {
+          await api(`/api/auth/downloads/${download.id}`, { method: "DELETE" });
+          state.downloads = state.downloads.filter((item) => item.id !== download.id);
+          renderHistory();
+        } catch (error) { remove.disabled = false; toast(error.message, "error"); }
+      });
+      actions.append(make("span", `mini-badge ${download.access}`, download.access === "vip" ? "VIP" : "مجاني"), remove);
+      row.append(info, actions);
       return row;
     }));
   }
@@ -2504,7 +2547,7 @@
   }
 
   const INTERFACE_SECTION_LABELS = {
-    hero: ["الواجهة الرئيسية", "layout"],
+    hero: ["بطاقات العضويات", "crown"],
     news: ["أخبار التعريبات", "news"],
     library: ["مكتبة التعريبات", "download"],
   };
@@ -2999,6 +3042,7 @@
       const stats = make("div", "admin-stats");
       stats.append(
         makeIconText("span", "stat-line", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+        makeViewStat(item),
         makeIconText("span", "stat-line", `${Number(item.commentCount) || 0} تعليق`, "comments"),
       );
       info.append(stats);
@@ -3011,7 +3055,19 @@
       edit.addEventListener("click", () => editTranslation(item));
       remove.addEventListener("click", () => deleteTranslation(item));
       actions.append(edit, remove);
-      row.append(info, actions);
+      const content = make("div", "admin-translation-content");
+      const thumbnail = make("div", "admin-translation-thumb");
+      const coverUrl = existingTranslationPreviewImages(item).cover;
+      if (coverUrl) {
+        const image = make("img");
+        image.src = coverUrl;
+        image.alt = `غلاف ${item.title}`;
+        image.loading = "lazy";
+        image.decoding = "async";
+        thumbnail.append(image);
+      } else { thumbnail.append(icon("gamepad")); }
+      content.append(thumbnail, info);
+      row.append(content, actions);
       return row;
     }));
   }
@@ -3769,6 +3825,12 @@
   $("#register-form").addEventListener("submit", (event) => submitAuth(event, "register"));
   $("#recover-form").addEventListener("submit", submitRecovery);
   $("#account-button").addEventListener("click", openAccount);
+  $("#free-membership-button").addEventListener("click", () => {
+    if (state.token) return openAccount();
+    state.afterAuth = null;
+    setAuthTab("register");
+    showDialog("auth-dialog");
+  });
   $("#support-button").addEventListener("click", openSupport);
   $("#notification-button").addEventListener("click", openNotifications);
   $("#privacy-button").addEventListener("click", () => showDialog("privacy-dialog"));
