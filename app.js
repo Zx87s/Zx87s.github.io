@@ -1197,7 +1197,8 @@
 
   function translationUrl(itemOrSlug, canonical = true) {
     const slug = typeof itemOrSlug === "string" ? itemOrSlug : itemOrSlug?.slug;
-    const url = canonical ? new URL("https://zx87s.github.io/") : new URL(location.href);
+    if (canonical) return new URL(`https://ta3reebat-memberships.zx87s.chatgpt.site/share/${encodeURIComponent(slug)}`);
+    const url = new URL(location.href);
     url.searchParams.set("game", slug);
     url.hash = "";
     return url;
@@ -1547,6 +1548,7 @@
 
   const viewRequests = new Map();
   async function recordTranslationView(id) {
+    if (state.user?.tier === "owner") return;
     if (viewRequests.has(id)) return viewRequests.get(id);
     const pending = api(`/api/translations/${id}/view`, {
       method: "POST", body: JSON.stringify({ visitorId: VISITOR_ID }),
@@ -2986,13 +2988,16 @@
         galleryKeys,
       };
       const id = values.get("id");
-      await api(id ? `/api/admin/translations/${id}` : "/api/admin/translations", {
+      const saved = await api(id ? `/api/admin/translations/${id}` : "/api/admin/translations", {
         method: id ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
       recordSaved = true;
       resetTranslationForm();
       $("#translation-message").textContent = "تم الحفظ.";
+      if (saved.discordDelivery === "sent") $("#translation-message").textContent = "تم الحفظ وإرسال الإعلان إلى Discord.";
+      if (saved.discordDelivery === "failed") $("#translation-message").textContent = "تم حفظ التعريب، لكن لم يُرسل إعلان Discord. أعد حفظه للمحاولة مجددًا.";
+      if (saved.discordDelivery === "uncertain") $("#translation-message").textContent = "تم حفظ التعريب. تعذر تأكيد وصول إعلان Discord؛ راجع القناة قبل إعادة الإعلان.";
       await Promise.all([loadAdminData({ fresh: true }), loadCatalog(true)]);
     } catch (error) {
       if (!recordSaved) {
@@ -3048,6 +3053,9 @@
       info.append(stats);
       if (item.downloadName) info.append(makeIconText("span", "admin-file-name", `${item.downloadName} · ${formatBytes(item.downloadSize)}`, "upload"));
       if (!item.isPublished) info.append(make("span", "unpublished", "غير منشور"));
+      if (item.discordDelivery === "sent") info.append(make("span", "", "تم الإعلان في Discord"));
+      if (item.discordDelivery === "failed") info.append(make("span", "unpublished", "لم يُرسل إعلان Discord — أعد الحفظ للمحاولة"));
+      if (["uncertain", "sending"].includes(item.discordDelivery)) info.append(make("span", "", "إعلان Discord قيد التحقق — راجع القناة"));
       const actions = make("div", "row-actions");
       const edit = makeIconText("button", "button ghost small", "تعديل", "edit");
       const remove = makeIconText("button", "button danger small", "حذف", "trash");
