@@ -1250,6 +1250,7 @@
   }
 
   function translationAction(item) {
+    if (item.downloadable === false) return { label: "قريبًا", icon: "calendar", locked: true };
     if (item.access !== "vip") return { label: "تنزيل التعريب", icon: "download", locked: false };
     return canAccessVip()
       ? { label: "تنزيل التعريب", icon: "download", locked: false }
@@ -1258,6 +1259,7 @@
 
   function translationTagNodes(item) {
     const tags = [];
+    if (item.earlyAccess && item.access === "vip") tags.push(make("span", "translation-tag", "وصول مبكر"));
     if (item.isNewRelease) tags.push(make("span", "translation-tag new", "جديد"));
     if (item.hasNewUpdate) tags.push(make("span", "translation-tag update", "تحديث جديد"));
     if (item.isExperimental) tags.push(make("span", "translation-tag experimental", "تجريبي"));
@@ -1332,11 +1334,92 @@
     }
   }
 
+  const PROJECT_LABELS = { planned: "مخطط له", translating: "قيد التعريب", testing: "قيد الاختبار", released: "متاح" };
+
+  function refreshLibraryFilters() {
+    if (!$("#genre-filter")) {
+      const toolbar = make("div", "advanced-filters");
+      for (const [id, title] of [["genre", "نوع اللعبة"], ["year", "سنة الإصدار"], ["status", "حالة التعريب"]]) {
+        const label = make("label", "", title);
+        const select = make("select");
+        select.id = `${id}-filter`;
+        select.addEventListener("change", renderCatalog);
+        label.append(select);
+        toolbar.append(label);
+      }
+      $("#catalog-grid").before(toolbar);
+    }
+    for (const item of state.catalog) {
+      if (item.earlyAccess && item.freeAt && Date.parse(item.freeAt) <= Date.now()) item.access = "free";
+    }
+    const choices = {
+      genre: [...new Set(state.catalog.map((item) => item.genre).filter(Boolean))].sort().map((value) => [value, value]),
+      year: [...new Set(state.catalog.map((item) => item.releaseYear).filter(Boolean))].sort((a, b) => b - a).map((value) => [String(value), String(value)]),
+      status: Object.entries(PROJECT_LABELS),
+    };
+    for (const [id, values] of Object.entries(choices)) {
+      const select = $(`#${id}-filter`);
+      const value = select.value;
+      select.replaceChildren(...[["", "الكل"], ...values].map(([key, text]) => { const option = make("option", "", text); option.value = key; return option; }));
+      select.value = values.some(([key]) => key === value) ? value : "";
+    }
+  }
+
+  function projectInfo(item) {
+    const root = make("div", "project-info");
+    const fields = [item.genre, item.releaseYear, PROJECT_LABELS[item.projectStatus]].filter(Boolean);
+    if (fields.length) root.append(make("p", "", fields.join(" · ")));
+    if (item.projectStatus && item.projectStatus !== "released") {
+      const percent = Math.max(0, Math.min(100, Number(item.progress) || 0));
+      root.append(make("span", "", `نسبة الإنجاز: ${percent}%`));
+      const bar = make("progress"); bar.max = 100; bar.value = percent; bar.setAttribute("aria-label", "نسبة إنجاز التعريب"); root.append(bar);
+    }
+    if (item.earlyAccess) root.append(make("p", "", item.freeAt
+      ? `${Date.parse(item.freeAt) <= Date.now() ? "متاح مجانًا منذ" : "متاح مجانًا في"} ${new Date(item.freeAt).toLocaleString("ar")}`
+      : "وصول مبكر لـVIP — موعد الإتاحة المجانية لم يُحدد"));
+    return root;
+  }
+
+  function makeRatingSection(item) {
+    const section = make("section", "detail-section rating-section");
+    section.append(make("h3", "", "تقييم جودة التعريب"));
+    const summary = make("p", "", item.ratingCount ? `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم` : "لا توجد تقييمات بعد.");
+    const message = make("p", "", "جارٍ تحميل التقييم…");
+    const controls = make("div", "rating-controls");
+    section.append(summary, controls, message);
+    const paint = (data) => {
+      summary.textContent = data.ratingCount ? `★ ${Number(data.ratingAverage).toFixed(1)} من 5 · ${data.ratingCount} تقييم` : "لا توجد تقييمات بعد.";
+      controls.replaceChildren();
+      message.textContent = data.canRate ? (data.myScore ? `تقييمك الحالي: ${data.myScore} من 5. يمكنك تعديله.` : "اختر تقييمك من نجمة إلى خمس نجوم.") : "التقييم متاح للحسابات التي نزّلت التعريب.";
+      if (!data.canRate) return;
+      for (let score = 1; score <= 5; score++) {
+        const button = make("button", `button ghost${data.myScore === score ? " selected-rating" : ""}`, `${score} ★`);
+        button.type = "button"; button.setAttribute("aria-label", `تقييم ${score} من خمس نجوم`); button.setAttribute("aria-pressed", String(data.myScore === score));
+        button.addEventListener("click", async () => {
+          controls.querySelectorAll("button").forEach((node) => { node.disabled = true; });
+          try {
+            const result = await api(`/api/translations/${item.id}/rating`, { method: "POST", body: JSON.stringify({ score }) });
+            Object.assign(item, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
+            const catalogItem = state.catalog.find((row) => row.id === item.id);
+            if (catalogItem) Object.assign(catalogItem, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
+            if (section.isConnected) { paint(result); renderCatalog(); }
+          } catch (error) { message.textContent = error.message; controls.querySelectorAll("button").forEach((node) => { node.disabled = false; }); }
+        });
+        controls.append(button);
+      }
+    };
+    api(`/api/translations/${item.id}/rating`).then((data) => { if (section.isConnected) paint(data); }).catch((error) => { message.textContent = error.message; });
+    return section;
+  }
+
   function visibleCatalog() {
     const query = normalize($("#catalog-search").value);
     const items = state.catalog.filter((item) => {
       const matchesFilter = state.filter === "all" || item.access === state.filter;
-      return matchesFilter && (!query || normalize(`${item.title} ${item.description}`).includes(query));
+      return matchesFilter && (!query || normalize(`${item.title} ${item.description}`).includes(query))
+        && (!$("#genre-filter").value || item.genre === $("#genre-filter").value)
+        && (!$("#year-filter").value || String(item.releaseYear) === $("#year-filter").value)
+        && (!$("#status-filter").value || (item.projectStatus || "released") === $("#status-filter").value);
     });
     return items.sort((first, second) => (
       Number(second.isFeatured) - Number(first.isFeatured)
@@ -1360,10 +1443,14 @@
       $("#results-status").textContent = "جارٍ تحميل التعريبات…";
       return;
     }
+    refreshLibraryFilters();
     const items = visibleCatalog();
     detailPrefetchObserver?.disconnect();
     detailPrefetchObserver = null;
-    grid.replaceChildren(...items.map(makeCatalogCard));
+    grid.replaceChildren(...items.filter((item) => item.downloadable !== false).map(makeCatalogCard));
+    const upcoming = items.filter((item) => item.downloadable === false);
+    $("#upcoming-grid").replaceChildren(...upcoming.map(makeCatalogCard));
+    $("#upcoming-section").hidden = !upcoming.length;
     $("#empty-state").hidden = items.length > 0;
     $("#results-status").textContent = `${items.length} تعريب`;
   }
@@ -1408,7 +1495,8 @@
       makeIconText("time", "stat-line published-date", formatDate(item.publishedAt), "calendar"),
     );
     top.append(stats);
-    body.append(top);
+    body.append(top, projectInfo(item));
+    if (item.ratingCount) body.append(make("p", "rating-summary", `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم`));
     if (item.description) body.append(make("p", "card-description", item.description));
     const action = translationAction(item);
     const button = makeIconText("button", "card-action", action.label, action.icon);
@@ -1643,6 +1731,7 @@
       makeIconText("time", "stat-line detail-published-date", `نُشر في ${formatDate(item.publishedAt)}`, "calendar"),
     );
     info.append(stats);
+    info.append(projectInfo(item));
     const action = translationAction(item);
     const download = makeIconText("button", "button primary detail-download", action.label, action.icon);
     download.classList.toggle("is-locked", action.locked);
@@ -1691,7 +1780,7 @@
       });
     }
     gallery.append(galleryGrid);
-    fragment.append(gallery, makeCommentsSection());
+    fragment.append(gallery, makeRatingSection(item), makeCommentsSection());
     root.replaceChildren(fragment);
   }
 
@@ -1772,6 +1861,7 @@
     const row = make("article", `comment-card tier-${comment.author.tier}`);
     const head = make("div", "comment-head");
     const author = make("div", "comment-author");
+    author.append(avatarControl(comment.author));
     author.append(
       make("strong", "comment-author-name", comment.author.username),
       make("span", `tier-pill ${comment.author.tier}`, tierLabel(comment.author.tier)),
@@ -1926,6 +2016,7 @@
   }
 
   async function downloadTranslation(item, button) {
+    if (item.downloadable === false) { toast("هذا التعريب قيد العمل وغير متاح للتنزيل بعد."); return; }
     if (!state.token) {
       showDialog("auth-dialog");
       return;
@@ -2083,6 +2174,7 @@
   function renderAccount() {
     const user = state.user;
     if (!user) return;
+    renderAccountAvatar();
     const summary = $("#account-summary");
     summary.replaceChildren();
     const items = [
@@ -2112,6 +2204,101 @@
     $("#recovery-message").textContent = "";
     renderHistory();
     renderInvoiceHistory("#account-invoice-history");
+  }
+
+  function avatarControl(user) {
+    const group = make("div", "avatar-control");
+    const button = make("button", "avatar-button"); button.type = "button";
+    const image = make("img"); image.src = user.avatarUrl || `${API_BASE}/w/avatar-default.svg`; image.alt = `صورة ${user.username}`; image.loading = "lazy"; image.decoding = "async";
+    button.setAttribute("aria-label", `تكبير صورة ${user.username}`);
+    button.append(image); button.addEventListener("click", () => openLightbox(image.src, image.alt)); group.append(button);
+    if (user.avatarVersion && state.user && state.user.id !== user.id) {
+      const report = make("button", "avatar-report", "تبليغ الصورة"); report.type = "button";
+      report.addEventListener("click", async () => {
+        const reason = prompt("ما سبب الإبلاغ عن الصورة؟"); if (!reason) return;
+        report.disabled = true;
+        try { await api(`/api/users/${user.id}/avatar/report`, { method: "POST", body: JSON.stringify({ reason, version: user.avatarVersion }) }); toast("تم إرسال بلاغ الصورة."); }
+        catch (error) { toast(error.message, "error"); report.disabled = false; }
+      }); group.append(report);
+    }
+    return group;
+  }
+
+  function renderAccountAvatar() {
+    const root = $("#account-avatar"); const user = state.user;
+    if (!root || !user) return;
+    root.replaceChildren(avatarControl(user));
+    const message = make("p", "form-message"); message.setAttribute("role", "status");
+    const change = async (method, file) => {
+      root.querySelectorAll("button,input").forEach((node) => { node.disabled = true; });
+      message.textContent = method === "POST" ? "جارٍ تجهيز الصورة ورفعها…" : "جارٍ حذف الصورة…";
+      try {
+        const body = file ? await prepareImage(file) : undefined;
+        const result = await api("/api/auth/avatar", { method, ...(body ? { body, headers: { "Content-Type": "application/octet-stream" } } : {}) });
+        state.user = result.user; detailCache.clear(); renderAccountAvatar(); toast("تم تحديث الصورة.");
+      } catch (error) { message.textContent = error.message; root.querySelectorAll("button,input").forEach((node) => { node.disabled = false; }); }
+    };
+    if (user.canUploadAvatar) {
+      const label = make("label", "button ghost avatar-upload", "اختيار صورة من الجهاز");
+      const input = make("input"); input.type = "file"; input.accept = "image/png,image/jpeg,image/webp,image/gif"; input.className = "avatar-file";
+      input.addEventListener("change", () => { if (input.files?.[0]) change("POST", input.files[0]); }); label.append(input); root.append(label);
+    } else root.append(make("p", "", "الصورة الافتراضية للعضوية المجانية."));
+    if (user.hasAvatar) { const remove = make("button", "button danger", "حذف الصورة"); remove.type = "button"; remove.addEventListener("click", () => { if (confirm("حذف صورتك الشخصية؟")) change("DELETE"); }); root.append(remove); }
+    root.append(message);
+  }
+
+  let auditCursors = [null];
+  let auditNext = null;
+  let auditRequestSequence = 0;
+  async function loadAudit(before) {
+    if (state.user?.tier !== "owner") return;
+    const sequence = ++auditRequestSequence;
+    const root = $("#audit-events"); root.textContent = "جارٍ تحميل السجل…";
+    $("#audit-next").disabled = $("#audit-back").disabled = true;
+    try {
+      const params = new URLSearchParams({ q: $("#audit-search").value, action: $("#audit-action").value });
+      if (before) params.set("before", before);
+      const data = await api(`/api/admin/audit?${params}`);
+      if (sequence !== auditRequestSequence) return;
+      auditNext = data.nextCursor;
+      const value = $("#audit-action").value;
+      $("#audit-action").replaceChildren(...["", ...data.actions].map((action) => { const option = make("option", "", action || "الكل"); option.value = action; return option; }));
+      $("#audit-action").value = value;
+      root.replaceChildren(...data.events.map((event) => {
+        const row = make("article", "audit-row");
+        row.append(make("strong", "", event.action), make("span", "", event.actor_id ? `${event.actor_name} #${event.actor_id}` : "تحديث النظام / الحساب"), make("p", "", `${event.detail || ""}${event.target_id ? ` · #${event.target_id}` : ""}`), make("time", "", formatDateTime(event.created_at)));
+        return row;
+      }));
+      if (!data.events.length) root.append(make("p", "empty-row", "لا توجد أنشطة مطابقة."));
+      $("#audit-back").disabled = auditCursors.length < 2; $("#audit-next").disabled = !auditNext;
+    } catch (error) { if (sequence === auditRequestSequence) root.textContent = error.message; }
+  }
+
+  async function loadAvatarReports() {
+    if (state.user?.tier !== "owner") return;
+    const root = $("#admin-avatar-reports"); root.textContent = "جارٍ تحميل بلاغات الصور…";
+    try {
+      const { reports } = await api("/api/admin/avatar-reports");
+      root.replaceChildren(...reports.map((report) => {
+        const row = make("article", "audit-row");
+        row.append(make("strong", "", `${report.username} #${report.user_id}`), make("span", "", `المبلّغ: ${report.reporter} #${report.reporter_id}`), make("p", "", report.reason));
+        if (report.current_image) row.append(avatarControl({ id: report.user_id, username: report.username, avatarUrl: `${API_BASE}/api/users/${report.user_id}/avatar` }));
+        else row.append(make("p", "", "الصورة المبلّغ عنها تغيّرت أو حُذفت."));
+        const actions = make("div", "form-actions");
+        for (const [action, label] of [["remove", "حذف الصورة"], ["dismiss", "رفض البلاغ"]]) {
+          if (action === "remove" && !report.current_image) continue;
+          const button = make("button", "button ghost", label); button.type = "button";
+          button.addEventListener("click", async () => {
+            if (action === "remove" && !confirm(`حذف صورة ${report.username}؟`)) return;
+            button.disabled = true;
+            try { await api(`/api/admin/avatar-reports/${report.id}`, { method: "PATCH", body: JSON.stringify({ action }) }); await loadAvatarReports(); }
+            catch (error) { toast(error.message, "error"); button.disabled = false; }
+          }); actions.append(button);
+        }
+        row.append(actions); return row;
+      }));
+      if (!reports.length) root.textContent = "لا توجد بلاغات صور معلّقة.";
+    } catch (error) { root.textContent = error.message; }
   }
 
   function invoiceStatusLabel(status) {
@@ -2178,6 +2365,9 @@
 
   function renderTranslationRequestHistory() {
     const list = $("#translation-request-history");
+    const pending = state.translationRequests.some((item) => item.status === "pending");
+    $("#translation-request-form button[type=submit]").disabled = pending;
+    if (pending) $("#translation-request-message").textContent = "لديك طلب قيد المراجعة. انتظر الموافقة أو الرفض لإرسال طلب جديد.";
     if (!state.translationRequests.length) {
       list.replaceChildren(make("p", "empty-row compact", "لم ترسل طلبات بعد."));
       return;
@@ -2217,6 +2407,7 @@
   async function submitTranslationRequest(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (state.translationRequests.some((item) => item.status === "pending")) { toast("انتظر مراجعة طلبك الحالي."); return; }
     const submit = $("button[type=submit]", form);
     submit.disabled = true;
     $("#translation-request-message").textContent = "جارٍ تجهيز الصورة وإرسال الطلب…";
@@ -2245,7 +2436,7 @@
     } catch (error) {
       $("#translation-request-message").textContent = error.message;
     } finally {
-      submit.disabled = false;
+      submit.disabled = state.translationRequests.some((item) => item.status === "pending");
     }
   }
 
@@ -2546,6 +2737,9 @@
     $("#admin-requests-panel").hidden = tab !== "requests";
     $("#admin-reports-panel").hidden = tab !== "reports";
     $("#admin-interface-panel").hidden = tab !== "interface";
+    $("#admin-audit-panel").hidden = tab !== "audit";
+    if (tab === "audit") { auditCursors = [null]; loadAudit(null); }
+    if (tab === "reports") loadAvatarReports();
   }
 
   const INTERFACE_SECTION_LABELS = {
@@ -2964,13 +3158,20 @@
         downloadName = null;
         downloadSize = null;
       }
-      if (access === "vip" && !downloadKey) throw new Error("اختر ملف تعريب VIP من الجهاز.");
-      if (access === "free" && !downloadKey && !externalUrl) {
+      const needsFile = values.get("projectStatus") === "released" || values.get("earlyAccess") === "on";
+      if (needsFile && (access === "vip" || values.get("earlyAccess") === "on") && !downloadKey) throw new Error("اختر ملف تعريب VIP من الجهاز.");
+      if (needsFile && access === "free" && !downloadKey && !externalUrl) {
         throw new Error("أدخل رابط التنزيل أو اختر ملف التعريب من الجهاز.");
       }
       $("#translation-message").textContent = "جارٍ حفظ بيانات التعريب…";
       const payload = {
         title: values.get("title"),
+        genre: values.get("genre"),
+        releaseYear: values.get("releaseYear"),
+        projectStatus: values.get("projectStatus"),
+        progress: Number(values.get("progress")),
+        earlyAccess: values.get("earlyAccess") === "on",
+        freeAt: publishedAtIso(values.get("freeAt")),
         slug: values.get("slug"),
         description: values.get("description"),
         access: values.get("access"),
@@ -3111,6 +3312,12 @@
     const existing = existingTranslationPreviewImages(state.editing);
     const item = {
       title: form.elements.title.value.trim() || "اسم التعريب",
+      genre: form.elements.genre.value,
+      releaseYear: form.elements.releaseYear.value,
+      projectStatus: form.elements.projectStatus.value,
+      progress: form.elements.projectStatus.value === "released" ? 100 : Number(form.elements.progress.value),
+      earlyAccess: form.elements.earlyAccess.checked,
+      freeAt: form.elements.freeAt.value,
       description: form.elements.description.value.trim() || "سيظهر وصف التعريب هنا قبل النشر.",
       access: form.elements.access.value,
       isPublished: form.elements.isPublished.checked,
@@ -3141,7 +3348,7 @@
     body.append(badges, make("h4", "", item.title), make("p", "", item.description));
     const meta = make("div", "preview-meta");
     meta.append(make("span", "", `النشر: ${formatDate(item.publishedAt)}`), make("span", "", item.isPublished ? "ظاهر للزوار" : "غير منشور"));
-    body.append(meta);
+    body.append(meta, projectInfo(item));
     const gallery = make("div", "preview-gallery");
     for (let index = 0; index < 4; index += 1) {
       const figure = make("figure");
@@ -3203,7 +3410,13 @@
     form.elements.title.value = item.title;
     form.elements.slug.value = item.slug;
     form.elements.description.value = item.description;
-    form.elements.access.value = item.access;
+    form.elements.access.value = item.configuredAccess || item.access;
+    form.elements.genre.value = item.genre || "";
+    form.elements.releaseYear.value = item.releaseYear || "";
+    form.elements.projectStatus.value = item.projectStatus || "released";
+    form.elements.progress.value = item.progress ?? 100;
+    form.elements.earlyAccess.checked = Boolean(item.earlyAccess);
+    form.elements.freeAt.value = item.freeAt ? toDateTimeLocal(item.freeAt) : "";
     form.elements.downloadUrl.value = item.downloadUrl || "";
     form.elements.isPublished.checked = item.isPublished;
     form.elements.isFeatured.checked = item.isFeatured;
@@ -3256,11 +3469,13 @@
 
   function syncDownloadFields() {
     const form = $("#translation-form");
+    if (form.elements.earlyAccess.checked) form.elements.access.value = "vip";
+    form.elements.freeAt.disabled = !form.elements.earlyAccess.checked;
     const isVip = form.elements.access.value === "vip";
     $("#download-url-field").hidden = isVip;
     $("#download-file-field").hidden = false;
     form.elements.downloadUrl.required = false;
-    form.elements.downloadFile.required = isVip && !state.editing?.downloadKey;
+    form.elements.downloadFile.required = isVip && !state.editing?.downloadKey && (form.elements.projectStatus.value === "released" || form.elements.earlyAccess.checked);
     const note = $("#download-file-note");
     if (state.editing?.downloadKey && !form.elements.downloadFile.files?.length) {
       note.textContent = `الملف الحالي: ${state.editing.downloadName} (${formatBytes(state.editing.downloadSize)}). اختر ملفًا جديدًا لاستبداله.`;
@@ -3610,6 +3825,7 @@
       const row = make("article", "admin-row user-row");
       const info = make("div", "admin-row-info");
       info.append(make("strong", `tier-name ${user.tier}`, `${user.username} · #${user.id}`));
+      info.prepend(avatarControl(user));
       info.append(make("span", "", user.email));
       const membershipText = user.tier === "owner"
         ? "Owner"
@@ -3824,6 +4040,9 @@
   $$('[data-auth-tab]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTab)));
   $$('[data-auth-tab-link]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTabLink)));
   $$('[data-admin-tab]').forEach((button) => button.addEventListener("click", () => setAdminTab(button.dataset.adminTab)));
+  $("#audit-search-form").addEventListener("submit", (event) => { event.preventDefault(); auditCursors = [null]; loadAudit(null); });
+  $("#audit-next").addEventListener("click", () => { if (auditNext) { auditCursors.push(auditNext); loadAudit(auditNext); } });
+  $("#audit-back").addEventListener("click", () => { if (auditCursors.length > 1) { auditCursors.pop(); loadAudit(auditCursors.at(-1)); } });
   $$('[data-invoice-filter]').forEach((button) => button.addEventListener("click", () => {
     state.adminInvoiceFilter = button.dataset.invoiceFilter;
     $$('[data-invoice-filter]').forEach((candidate) => candidate.classList.toggle("is-active", candidate === button));
@@ -3903,6 +4122,7 @@
     syncDownloadFields();
   });
   $("#translation-form").elements.access.addEventListener("change", syncDownloadFields);
+  ["projectStatus", "earlyAccess"].forEach((name) => $("#translation-form").elements[name].addEventListener("change", () => { syncDownloadFields(); renderTranslationPreview(); }));
   $("#translation-dialog").addEventListener("close", () => {
     state.detailRequest += 1;
     state.activeTranslation = null;
@@ -3932,7 +4152,7 @@
   setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
   setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
   setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
-  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag", interface: "layout" };
+  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag", interface: "layout", audit: "calendar" };
   $$('[data-admin-tab]').forEach((button) => setIconText(button, adminTabIcons[button.dataset.adminTab], button.textContent));
   $$(".file-button").forEach((node) => setIconText(node, "upload", node.textContent));
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());

@@ -11,8 +11,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=34" />
-    <script src="./app.js?v=34" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=35" />
+    <script src="./app.js?v=35" defer></script>
   </head>
   <body>
     <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
@@ -69,6 +69,7 @@
           <p class="results-status" id="results-status" role="status"></p>
           <div class="catalog-grid" id="catalog-grid"></div>
           <div class="empty-state" id="empty-state" hidden><h3>لا توجد تعريبات</h3></div>
+          <section id="upcoming-section" hidden aria-labelledby="upcoming-title"><h2 id="upcoming-title">التعريبات القادمة</h2><div class="catalog-grid" id="upcoming-grid"></div></section>
         </div>
       </section>
       <section class="news-section" id="news">
@@ -185,6 +186,7 @@
         <button class="modal-close" data-close="account-dialog" aria-label="إغلاق">×</button>
         <div class="modal-heading"><div><p class="eyebrow">الحساب</p><h2>حسابي</h2></div><button class="button danger" id="logout-button" type="button">خروج</button></div>
         <div class="account-summary" id="account-summary"></div>
+        <div id="account-avatar" class="account-avatar"></div>
         <details class="account-edit">
           <summary>تعديل الحساب</summary>
           <form id="account-form" class="form-grid two-columns">
@@ -306,6 +308,7 @@
           <button class="tab" type="button" data-admin-tab="requests">طلبات التعريب</button>
           <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
           <button class="tab" type="button" data-admin-tab="interface">تخصيص الواجهة</button>
+          <button class="tab" type="button" data-admin-tab="audit">سجل النشاط</button>
         </div>
         <section id="admin-translations-panel">
           <div class="admin-editor-layout">
@@ -316,6 +319,12 @@
             <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
             <label class="span-2">الوصف<textarea name="description" rows="3" maxlength="2000"></textarea></label>
             <label>الفئة<select name="access" required><option value="free">مجاني</option><option value="vip">VIP</option></select></label>
+            <label>نوع اللعبة<input name="genre" maxlength="50" placeholder="مثال: رعب، مغامرات، أكشن" /></label>
+            <label>سنة إصدار اللعبة<input name="releaseYear" type="number" min="1970" max="2100" /></label>
+            <label>حالة التعريب<select name="projectStatus"><option value="released">متاح</option><option value="planned">مخطط له</option><option value="translating">قيد التعريب</option><option value="testing">قيد الاختبار</option></select></label>
+            <label>نسبة الإنجاز<input name="progress" type="number" min="0" max="100" value="100" required /></label>
+            <label class="check-label"><input name="earlyAccess" type="checkbox" /> وصول مبكر لأعضاء VIP</label>
+            <label>موعد الإتاحة المجانية (اختياري)<input name="freeAt" type="datetime-local" /><small>إن تُرك فارغًا، يبقى الوصول المبكر مخصصًا لـVIP.</small></label>
             <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
             <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 512MB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
             <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
@@ -393,7 +402,13 @@
           <div class="admin-panel-heading"><div><p class="eyebrow">اقتراحات الأعضاء</p><h3>طلبات التعريب</h3></div></div>
           <div class="admin-list" id="admin-requests"></div>
         </section>
-        <section id="admin-reports-panel" hidden><div class="admin-list" id="admin-reports"></div></section>
+        <section id="admin-reports-panel" hidden><h3>بلاغات صور الحسابات</h3><div class="admin-list" id="admin-avatar-reports"></div><h3>بلاغات التعليقات</h3><div class="admin-list" id="admin-reports"></div></section>
+        <section id="admin-audit-panel" hidden>
+          <h3>سجل النشاط</h3>
+          <form id="audit-search-form" class="advanced-filters"><label>الاسم أو رقم الحساب أو التعريب<input id="audit-search" maxlength="80" type="search" /></label><label>النشاط<select id="audit-action"><option value="">الكل</option></select></label><button class="button ghost" type="submit">بحث وتحديث</button></form>
+          <div id="audit-events" class="admin-list" aria-live="polite"></div>
+          <div class="form-actions"><button id="audit-back" class="button ghost" type="button" disabled>السابق</button><button id="audit-next" class="button ghost" type="button" disabled>التالي</button></div>
+        </section>
         <section id="admin-interface-panel" hidden>
           <div class="admin-panel-heading">
             <div><p class="eyebrow">مظهر الموقع</p><h3>تخصيص الواجهة الرئيسية</h3></div>

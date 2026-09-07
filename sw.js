@@ -1,7 +1,7 @@
 "use strict";
 
-const CACHE_NAME = "zx87s-public-v34";
-const CORE_ASSETS = ["./", "./index.html", "./styles.css?v=34", "./app.js?v=34", "./favicon.svg"];
+const CACHE_NAME = "zx87s-public-v35";
+const CORE_ASSETS = ["./", "./index.html", "./styles.css?v=35", "./app.js?v=35", "./favicon.svg"];
 const API_ORIGIN = "https://ta3reebat-memberships.zx87s.chatgpt.site";
 
 self.addEventListener("install", (event) => {
@@ -60,6 +60,7 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || request.headers.has("Authorization")) return;
   const url = new URL(request.url);
+  if (/^\/api\/users\/\d+\/avatar/.test(url.pathname)) return;
   if (request.mode === "navigate") {
     event.respondWith(navigationResponse(request));
     return;
