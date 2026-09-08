@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Zx87s_TheSin_Localization_Collector</AssemblyName>
+    <RootNamespace>Zx87s.TheSinCollector</RootNamespace>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Company>Zx87s</Company>
+    <Product>Zx87s TheSin Localization Collector</Product>
+    <Description>Read-only Unreal Engine PAK localization asset collector for fonts, English text and atlas candidates.</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\repak.exe" LogicalName="repak.exe" />
+    <EmbeddedResource Include="Resources\UE4TextExtractor.exe" LogicalName="UE4TextExtractor.exe" />
+    <EmbeddedResource Include="Resources\THIRD_PARTY_NOTICES.txt" LogicalName="THIRD_PARTY_NOTICES.txt" />
+  </ItemGroup>
+</Project>
