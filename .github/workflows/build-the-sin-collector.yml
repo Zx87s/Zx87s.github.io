@@ -1,0 +1,120 @@
+name: Build TheSin Localization Collector
+
+on:
+  push:
+    branches:
+      - chatgpt-build/the-sin-localization-collector-20260908
+    paths:
+      - '.chatgpt-builds/the-sin-localization-collector/**'
+      - '.github/workflows/build-the-sin-collector.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Fetch and verify embedded helper tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $projectDir = Join-Path $env:GITHUB_WORKSPACE '.chatgpt-builds/the-sin-localization-collector'
+          $resources = Join-Path $projectDir 'Resources'
+          $downloads = Join-Path $env:RUNNER_TEMP 'z87-tools'
+          New-Item -ItemType Directory -Force -Path $resources, $downloads | Out-Null
+
+          $repakZip = Join-Path $downloads 'repak.zip'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/trumank/repak/releases/download/v0.2.3/repak_cli-x86_64-pc-windows-msvc.zip' -OutFile $repakZip
+          $repakHash = (Get-FileHash -Algorithm SHA256 $repakZip).Hash.ToLowerInvariant()
+          if ($repakHash -ne '6720d602144d75df477a99d5bedb6ea780997546afc335901d4937cafeaa73fa') {
+            throw "repak package SHA256 mismatch: $repakHash"
+          }
+          $repakExpanded = Join-Path $downloads 'repak'
+          Expand-Archive -Path $repakZip -DestinationPath $repakExpanded -Force
+          $repakExe = Get-ChildItem -Path $repakExpanded -Filter 'repak.exe' -File -Recurse | Select-Object -First 1
+          if (-not $repakExe) { throw 'repak.exe was not found in the verified release archive.' }
+          Copy-Item $repakExe.FullName (Join-Path $resources 'repak.exe') -Force
+
+          $ue4Text = Join-Path $resources 'UE4TextExtractor.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/VD42/UE4TextExtractor/releases/download/0.25/UE4TextExtractor.exe' -OutFile $ue4Text
+          $ue4TextHash = (Get-FileHash -Algorithm SHA256 $ue4Text).Hash.ToLowerInvariant()
+          if ($ue4TextHash -ne '2797b731997bf4284d32d1dc7d07579c32fc51acfe2c2fef1092e24363f6b073') {
+            throw "UE4TextExtractor SHA256 mismatch: $ue4TextHash"
+          }
+
+          $repakMit = Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/trumank/repak/v0.2.3/LICENSE-MIT'
+          $repakApache = Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/trumank/repak/v0.2.3/LICENSE-APACHE'
+          $ueLicense = Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/VD42/UE4TextExtractor/0.25/LICENSE'
+
+          $notice = @"
+          Zx87s TheSin Localization Collector - Third-Party Notices
+          =========================================================
+
+          repak v0.2.3
+          Source: https://github.com/trumank/repak
+
+          --- MIT License ---
+          $($repakMit.Content)
+
+          --- Apache-2.0 License ---
+          $($repakApache.Content)
+
+          UE4TextExtractor 0.25
+          Source: https://github.com/VD42/UE4TextExtractor
+
+          --- License ---
+          $($ueLicense.Content)
+          "@
+          Set-Content -Path (Join-Path $resources 'THIRD_PARTY_NOTICES.txt') -Value $notice -Encoding UTF8
+
+          Write-Host "Verified repak archive SHA256: $repakHash"
+          Write-Host "Verified UE4TextExtractor SHA256: $ue4TextHash"
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore '.chatgpt-builds/the-sin-localization-collector/TheSinCollector.csproj' -r win-x64
+
+      - name: Publish single-file self-contained EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:GITHUB_WORKSPACE 'publish-the-sin-collector'
+          dotnet publish '.chatgpt-builds/the-sin-localization-collector/TheSinCollector.csproj' `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o $out
+
+          $exe = Join-Path $out 'Zx87s_TheSin_Localization_Collector.exe'
+          if (-not (Test-Path $exe)) { throw 'Expected EXE was not produced.' }
+          if ((Get-Item $exe).Length -lt 1000000) { throw 'Produced EXE is unexpectedly small.' }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          Set-Content -Path (Join-Path $out 'SHA256.txt') -Value "$hash  Zx87s_TheSin_Localization_Collector.exe" -Encoding ascii
+          Write-Host "EXE SHA256: $hash"
+
+      - name: Upload Windows x64 EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zx87s_TheSin_Localization_Collector_Windows_x64
+          path: |
+            publish-the-sin-collector/Zx87s_TheSin_Localization_Collector.exe
+            publish-the-sin-collector/SHA256.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
