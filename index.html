@@ -35,7 +35,7 @@
           <a href="#news">الأخبار</a>
           <a href="#library">المكتبة</a>
           <a href="#vip">VIP</a>
-          <button class="nav-action" id="translation-request-button" type="button">طلبات التعريب</button>
+          <button class="nav-action" id="translation-request-button" type="button">اطلب تعريبك</button>
           <a class="discord-link" href="https://discord.com/invite/Abc3unQS3m" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
             <span>مجتمع</span>
@@ -101,7 +101,7 @@
                 <li>تنزيل جميع التعريبات المجانية بعد تسجيل الدخول</li>
                 <li>مشاهدة تفاصيل وصور جميع التعريبات</li>
                 <li>التعليق والرد والتفاعل مع المجتمع</li>
-                <li>إرسال طلبات التعريب وتذاكر الدعم الفني</li>
+                <li>إرسال طلب تعريب خاص وتذاكر الدعم الفني</li>
               </ul>
               <button class="button ghost wide" id="free-membership-button" type="button">إنشاء حساب مجاني</button>
             </article>
@@ -289,11 +289,18 @@
     <dialog id="translation-request-dialog" class="modal">
       <section class="modal-card request-card" aria-labelledby="translation-request-title">
         <button class="modal-close" data-close="translation-request-dialog" aria-label="إغلاق">×</button>
-        <div class="modal-heading"><div><p class="eyebrow">شارك اقتراحك</p><h2 id="translation-request-title">طلبات التعريب</h2></div></div>
+        <div class="modal-heading"><div><p class="eyebrow">خدمة تعريب خاصة مدفوعة</p><h2 id="translation-request-title">اطلب تعريبك</h2><p>نراجع محرك اللعبة وحجم النصوص والوقت المطلوب، ثم يحدد Owner السعر والمدة داخل طلبك الخاص.</p></div></div>
+        <div class="engine-strip" aria-label="محركات الألعاب"><span>◈ Unity</span><span>◆ Unreal</span><span>◇ Godot</span><span>⬡ GameMaker</span><span>✦ أخرى</span></div>
         <form id="translation-request-form" class="form-grid">
           <label>اسم اللعبة<input name="gameName" maxlength="120" required /></label>
-          <label>لماذا تستحق هذه اللعبة التعريب؟<textarea name="reason" rows="5" minlength="15" maxlength="1500" required></textarea></label>
+          <label>رابط اللعبة في Steam<input name="steamUrl" type="url" inputmode="url" placeholder="https://store.steampowered.com/app/..." required /></label>
+          <label>محرك اللعبة<select name="engine" required><option value="">اختر المحرك</option><option value="unity">Unity</option><option value="unreal">Unreal Engine</option><option value="godot">Godot</option><option value="gamemaker">GameMaker</option><option value="other">محرك آخر / غير معروف</option></select></label>
+          <label>المنصة وإصدار اللعبة<input name="platform" maxlength="100" placeholder="PC · Steam · الإصدار الحالي" required /></label>
+          <label>وصف اللعبة ونطاق التعريب<textarea name="reason" rows="5" minlength="15" maxlength="3000" required></textarea></label>
+          <label>ميزانيتك المتوقعة<input name="estimatedBudget" maxlength="100" placeholder="مثال: 100 دولار" required /></label>
+          <label>المدة المطلوبة<input name="requestedTimeline" maxlength="100" placeholder="مثال: خلال شهر" required /></label>
           <label class="file-field">صورة اللعبة من جهازك<span class="file-picker"><span data-file-label="requestImage">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="requestImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required /></span></label>
+          <label class="terms-check"><input name="termsAccepted" type="checkbox" required /><span>أفهم أن السعر والمدة يحددهما Owner بعد المراجعة، وأن الدفع يدوي ولا يبدأ العمل قبل تأكيد استلامه.</span></label>
           <button class="button primary" type="submit">إرسال الطلب</button>
         </form>
         <p class="form-message" id="translation-request-message" role="status"></p>
@@ -314,7 +321,7 @@
           <button class="tab" type="button" data-admin-tab="news">الأخبار</button>
           <button class="tab" type="button" data-admin-tab="invoices">فواتير PayPal</button>
           <button class="tab" type="button" data-admin-tab="users">المستخدمون</button>
-          <button class="tab" type="button" data-admin-tab="requests">طلبات التعريب</button>
+          <button class="tab" type="button" data-admin-tab="requests">اطلب تعريبك</button>
           <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
           <button class="tab" type="button" data-admin-tab="interface">تخصيص الواجهة</button>
           <button class="tab" type="button" data-admin-tab="audit">سجل النشاط</button>
@@ -408,7 +415,7 @@
           <div id="admin-users-pagination"></div>
         </section>
         <section id="admin-requests-panel" hidden>
-          <div class="admin-panel-heading"><div><p class="eyebrow">اقتراحات الأعضاء</p><h3>طلبات التعريب</h3></div></div>
+          <div class="admin-panel-heading"><div><p class="eyebrow">الخدمة المدفوعة</p><h3>اطلب تعريبك</h3></div></div>
           <div class="admin-list" id="admin-requests"></div>
         </section>
         <section id="admin-reports-panel" hidden><h3>بلاغات صور الحسابات</h3><div class="admin-list" id="admin-avatar-reports"></div><h3>بلاغات التعليقات</h3><div class="admin-list" id="admin-reports"></div></section>
