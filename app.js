@@ -2358,14 +2358,15 @@
   }
 
   function translationRequestStatusLabel(status) {
-    if (status === "approved") return "تمت الموافقة";
+    const labels = { new: "طلب جديد", reviewing: "قيد الدراسة", offer_sent: "أُرسل العرض", awaiting_payment: "بانتظار الدفع", paid: "تم تأكيد الدفع", in_progress: "جارٍ التعريب", ready: "جاهز للتسليم", completed: "مكتمل", cancelled: "ملغي", approved: "قيد الدراسة" };
+    if (labels[status]) return labels[status];
     if (status === "rejected") return "مرفوض";
     return "قيد المراجعة";
   }
 
   function renderTranslationRequestHistory() {
     const list = $("#translation-request-history");
-    const pending = state.translationRequests.some((item) => item.status === "pending");
+    const pending = state.translationRequests.some((item) => ["pending", "new", "reviewing", "offer_sent", "awaiting_payment", "paid", "in_progress", "ready"].includes(item.status));
     $("#translation-request-form button[type=submit]").disabled = pending;
     if (pending) $("#translation-request-message").textContent = "لديك طلب قيد المراجعة. انتظر الموافقة أو الرفض لإرسال طلب جديد.";
     if (!state.translationRequests.length) {
@@ -2407,7 +2408,7 @@
   async function submitTranslationRequest(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    if (state.translationRequests.some((item) => item.status === "pending")) { toast("انتظر مراجعة طلبك الحالي."); return; }
+    if (state.translationRequests.some((item) => ["pending", "new", "reviewing", "offer_sent", "awaiting_payment", "paid", "in_progress", "ready"].includes(item.status))) { toast("لديك طلب نشط بالفعل."); return; }
     const submit = $("button[type=submit]", form);
     submit.disabled = true;
     $("#translation-request-message").textContent = "جارٍ تجهيز الصورة وإرسال الطلب…";
@@ -2418,6 +2419,12 @@
       const metadata = new TextEncoder().encode(JSON.stringify({
         gameName: form.elements.gameName.value,
         reason: form.elements.reason.value,
+        steamUrl: form.elements.steamUrl.value,
+        engine: form.elements.engine.value,
+        platform: form.elements.platform.value,
+        estimatedBudget: form.elements.estimatedBudget.value,
+        requestedTimeline: form.elements.requestedTimeline.value,
+        termsAccepted: form.elements.termsAccepted.checked,
       }));
       if (metadata.byteLength > 12 * 1024) throw new Error("بيانات الطلب طويلة جدًا.");
       const metadataLength = new Uint8Array(4);
@@ -2436,7 +2443,7 @@
     } catch (error) {
       $("#translation-request-message").textContent = error.message;
     } finally {
-      submit.disabled = state.translationRequests.some((item) => item.status === "pending");
+      submit.disabled = state.translationRequests.some((item) => ["pending", "new", "reviewing", "offer_sent", "awaiting_payment", "paid", "in_progress", "ready"].includes(item.status));
     }
   }
 
@@ -2879,7 +2886,7 @@
     const invoiceTab = $('[data-admin-tab="invoices"]');
     setIconText(invoiceTab, "receipt", pendingInvoices ? `فواتير PayPal (${pendingInvoices})` : "فواتير PayPal");
     const requestsTab = $('[data-admin-tab="requests"]');
-    setIconText(requestsTab, "gamepad", pendingRequests ? `طلبات التعريب (${pendingRequests})` : "طلبات التعريب");
+    setIconText(requestsTab, "gamepad", pendingRequests ? `اطلب تعريبك (${pendingRequests})` : "اطلب تعريبك");
   }
 
   function imageExtension(name) {
@@ -3731,7 +3738,7 @@
   function renderAdminTranslationRequests() {
     const list = $("#admin-requests");
     if (!state.adminTranslationRequests.length) {
-      list.replaceChildren(make("p", "empty-row", "لا توجد طلبات تعريب."));
+      list.replaceChildren(make("p", "empty-row", "لا توجد طلبات خاصة."));
       return;
     }
     list.replaceChildren(...state.adminTranslationRequests.map((request) => {
@@ -3756,11 +3763,11 @@
       );
       main.append(image, info);
       const actions = make("div", "row-actions request-admin-actions");
-      if (request.status === "pending") {
-        const approve = makeIconText("button", "button approve small", "موافقة", "check");
+      if (["pending", "new", "reviewing"].includes(request.status)) {
+        const approve = makeIconText("button", "button approve small", "إرسال عرض", "check");
         const reject = makeIconText("button", "button danger small", "رفض", "close");
         approve.type = reject.type = "button";
-        approve.addEventListener("click", () => reviewTranslationRequest(request, "approve"));
+        approve.addEventListener("click", () => reviewTranslationRequest(request, "send_offer"));
         reject.addEventListener("click", () => reviewTranslationRequest(request, "reject"));
         actions.append(approve, reject);
       }
@@ -3774,15 +3781,18 @@
   }
 
   async function reviewTranslationRequest(request, action) {
-    const verb = action === "approve" ? "الموافقة على" : "رفض";
+    const verb = action === "send_offer" ? "إرسال عرض إلى" : "رفض";
     if (!confirm(`تأكيد ${verb} طلب تعريب ${request.gameName}؟`)) return;
     try {
+      const quotedPrice = action === "send_offer" ? prompt("السعر النهائي مع العملة:") : null;
+      const quotedDuration = action === "send_offer" ? prompt("مدة التنفيذ:") : null;
+      if (action === "send_offer" && (!quotedPrice || !quotedDuration)) return;
       await api(`/api/admin/translation-requests/${request.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, quotedPrice, quotedDuration }),
       });
       await loadAdminTranslationRequests();
-      toast(action === "approve" ? "تمت الموافقة على الطلب." : "تم رفض الطلب.");
+      toast(action === "send_offer" ? "تم إرسال العرض." : "تم رفض الطلب.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -4144,7 +4154,7 @@
   setIconText($("#account-form button[type=submit]"), "save", "حفظ");
   setIconText($("#recovery-code-form button[type=submit]"), "key", "إنشاء رمز استرداد جديد");
   setIconText($("#copy-recovery-code"), "copy", "نسخ الرمز");
-  setIconText($("#translation-request-button"), "gamepad", "طلبات التعريب");
+  setIconText($("#translation-request-button"), "gamepad", "اطلب تعريبك");
   setIconText($("#translation-request-form button[type=submit]"), "gamepad", "إرسال الطلب");
   setIconText($("#new-ticket-button"), "headset", "تذكرة جديدة");
   setIconText($("#support-ticket-form button[type=submit]"), "headset", "فتح التذكرة وبدء المحادثة");
