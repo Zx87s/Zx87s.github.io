@@ -289,22 +289,20 @@
     <dialog id="translation-request-dialog" class="modal">
       <section class="modal-card request-card" aria-labelledby="translation-request-title">
         <button class="modal-close" data-close="translation-request-dialog" aria-label="إغلاق">×</button>
-        <div class="modal-heading"><div><p class="eyebrow">خدمة تعريب خاصة مدفوعة</p><h2 id="translation-request-title">اطلب تعريبك</h2><p>نراجع محرك اللعبة وحجم النصوص والوقت المطلوب، ثم يحدد Owner السعر والمدة داخل طلبك الخاص.</p></div></div>
-        <div class="engine-strip" aria-label="محركات الألعاب"><span>◈ Unity</span><span>◆ Unreal</span><span>◇ Godot</span><span>⬡ GameMaker</span><span>✦ أخرى</span></div>
+        <div class="modal-heading"><div><p class="eyebrow">خدمة تعريب خاصة مدفوعة</p><h2 id="translation-request-title">اطلب تعريبك</h2><p>أرسل معلومات اللعبة فقط. بعد المراجعة يراسلك Owner داخل الطلب بالسعر النهائي وطريقة الدفع والمدة.</p></div></div>
+        <section class="request-steps" aria-label="خطوات طلب التعريب"><h3>كيف تتم العملية؟</h3><ol><li>ترسل اسم اللعبة ورابط Steam والوصف والميزانية.</li><li>يراجع Owner الطلب ويحدد السعر والمدة المناسبة.</li><li>تصلك تعليمات الدفع داخل محادثة طلبك الخاصة.</li><li>بعد تأكيد الدفع يبدأ العمل، ثم يظهر رابط التسليم لك وحدك.</li></ol></section>
         <form id="translation-request-form" class="form-grid">
           <label>اسم اللعبة<input name="gameName" maxlength="120" required /></label>
           <label>رابط اللعبة في Steam<input name="steamUrl" type="url" inputmode="url" placeholder="https://store.steampowered.com/app/..." required /></label>
-          <label>محرك اللعبة<select name="engine" required><option value="">اختر المحرك</option><option value="unity">Unity</option><option value="unreal">Unreal Engine</option><option value="godot">Godot</option><option value="gamemaker">GameMaker</option><option value="other">محرك آخر / غير معروف</option></select></label>
-          <label>المنصة وإصدار اللعبة<input name="platform" maxlength="100" placeholder="PC · Steam · الإصدار الحالي" required /></label>
           <label>وصف اللعبة ونطاق التعريب<textarea name="reason" rows="5" minlength="15" maxlength="3000" required></textarea></label>
           <label>ميزانيتك المتوقعة<input name="estimatedBudget" maxlength="100" placeholder="مثال: 100 دولار" required /></label>
           <label>المدة المطلوبة<input name="requestedTimeline" maxlength="100" placeholder="مثال: خلال شهر" required /></label>
-          <label class="file-field">صورة اللعبة من جهازك<span class="file-picker"><span data-file-label="requestImage">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="requestImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required /></span></label>
           <label class="terms-check"><input name="termsAccepted" type="checkbox" required /><span>أفهم أن السعر والمدة يحددهما Owner بعد المراجعة، وأن الدفع يدوي ولا يبدأ العمل قبل تأكيد استلامه.</span></label>
           <button class="button primary" type="submit">إرسال الطلب</button>
         </form>
         <p class="form-message" id="translation-request-message" role="status"></p>
         <section class="request-history-section"><h3>طلباتي</h3><div id="translation-request-history" class="request-history"></div></section>
+        <section class="request-chat-section" id="request-chat-section" hidden><h3 id="request-chat-title">محادثة الطلب</h3><p class="muted">هنا يرسل Owner السعر والمدة وطريقة الدفع. لا ترسل بيانات بطاقتك البنكية داخل المحادثة.</p><div id="request-chat-messages" class="request-chat-messages"></div><form id="request-chat-form" class="inline-message-form"><input name="body" maxlength="2000" placeholder="اكتب رسالتك إلى Owner…" required /><button class="button primary" type="submit">إرسال</button></form></section>
       </section>
     </dialog>
 
@@ -415,7 +413,7 @@
           <div id="admin-users-pagination"></div>
         </section>
         <section id="admin-requests-panel" hidden>
-          <div class="admin-panel-heading"><div><p class="eyebrow">الخدمة المدفوعة</p><h3>اطلب تعريبك</h3></div></div>
+          <div class="admin-panel-heading"><div><p class="eyebrow">الخدمة المدفوعة</p><h3>اطلب تعريبك</h3><p class="admin-subtitle">راجع الطلب، أرسل العرض، تحدث مع العميل، ثم أكد الدفع وارفع التسليم.</p></div><button class="button ghost small" id="publish-private-request-cta" type="button">نشر إعلان Discord العام</button></div>
           <div class="admin-list" id="admin-requests"></div>
         </section>
         <section id="admin-reports-panel" hidden><h3>بلاغات صور الحسابات</h3><div class="admin-list" id="admin-avatar-reports"></div><h3>بلاغات التعليقات</h3><div class="admin-list" id="admin-reports"></div></section>
