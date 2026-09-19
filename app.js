@@ -81,6 +81,7 @@
     adminInvoices: [],
     adminInvoiceFilter: "pending",
     translationRequests: [],
+    activePrivateRequest: null,
     adminTranslationRequests: [],
     activeTranslation: null,
     comments: [],
@@ -2381,9 +2382,39 @@
       image.loading = "lazy";
       const info = make("div", "request-history-info");
       info.append(make("strong", "", request.gameName), make("time", "", formatDateTime(request.createdAt)));
-      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)));
+      if (request.quotedPrice || request.quotedDuration) info.append(make("small", "request-offer", `العرض: ${request.quotedPrice || "بانتظار السعر"} · ${request.quotedDuration || "بانتظار المدة"}`));
+      const action = make("button", "button ghost small", "فتح محادثة الطلب"); action.type = "button"; action.addEventListener("click", () => openPrivateRequestChat(request));
+      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)), action);
       return row;
     }));
+  }
+
+  async function openPrivateRequestChat(request) {
+    state.activePrivateRequest = request;
+    $("#request-chat-section").hidden = false;
+    $("#request-chat-title").textContent = `محادثة طلب «${request.gameName}»`;
+    await loadPrivateRequestMessages();
+    $("#request-chat-section").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function loadPrivateRequestMessages() {
+    const request = state.activePrivateRequest; if (!request) return;
+    const result = await api(`/api/translation-requests/${request.id}/messages`);
+    const list = $("#request-chat-messages");
+    list.replaceChildren(...(result.messages || []).map((message) => {
+      const item = make("article", `request-chat-message ${message.senderTier}`);
+      item.append(make("strong", "", `${message.senderUsername} · ${message.senderTier === "owner" ? "Owner" : message.senderTier === "mod" ? "Mod" : "صاحب الطلب"}`), make("p", "", message.body), make("time", "", formatDateTime(message.createdAt)));
+      return item;
+    }));
+    list.scrollTop = list.scrollHeight;
+  }
+
+  async function submitPrivateRequestMessage(event) {
+    event.preventDefault(); const request = state.activePrivateRequest; if (!request) return;
+    const form = event.currentTarget; const input = form.elements.body; const body = input.value.trim(); if (!body) return;
+    form.querySelector("button").disabled = true;
+    try { await api(`/api/translation-requests/${request.id}/messages`, { method: "POST", body: JSON.stringify({ body }) }); input.value = ""; await loadPrivateRequestMessages(); }
+    catch (error) { toast(error.message, "error"); } finally { form.querySelector("button").disabled = false; }
   }
 
   async function loadTranslationRequests() {
@@ -2411,17 +2442,12 @@
     if (state.translationRequests.some((item) => ["pending", "new", "reviewing", "offer_sent", "awaiting_payment", "paid", "in_progress", "ready"].includes(item.status))) { toast("لديك طلب نشط بالفعل."); return; }
     const submit = $("button[type=submit]", form);
     submit.disabled = true;
-    $("#translation-request-message").textContent = "جارٍ تجهيز الصورة وإرسال الطلب…";
+    $("#translation-request-message").textContent = "جارٍ إرسال معلومات الطلب…";
     try {
-      const selected = form.elements.requestImage.files?.[0];
-      if (!selected) throw new Error("اختر صورة اللعبة من جهازك.");
-      const prepared = await prepareImage(selected);
       const metadata = new TextEncoder().encode(JSON.stringify({
         gameName: form.elements.gameName.value,
         reason: form.elements.reason.value,
         steamUrl: form.elements.steamUrl.value,
-        engine: form.elements.engine.value,
-        platform: form.elements.platform.value,
         estimatedBudget: form.elements.estimatedBudget.value,
         requestedTimeline: form.elements.requestedTimeline.value,
         termsAccepted: form.elements.termsAccepted.checked,
@@ -2429,15 +2455,15 @@
       if (metadata.byteLength > 12 * 1024) throw new Error("بيانات الطلب طويلة جدًا.");
       const metadataLength = new Uint8Array(4);
       new DataView(metadataLength.buffer).setUint32(0, metadata.byteLength);
-      const body = new Blob([metadataLength, metadata, prepared], { type: "application/octet-stream" });
+      const body = new Blob([metadataLength, metadata], { type: "application/octet-stream" });
       await api("/api/translation-requests", {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
         body,
       });
       form.reset();
-      updateFileLabel(form.elements.requestImage);
-      $("#translation-request-message").textContent = "تم إرسال الطلب إلى Owner للمراجعة.";
+      $("#translation-request-message").textContent = "تم إرسال الطلب. افتح محادثة الطلب لمعرفة رد Owner والسعر وطريقة الدفع.";
+      $("#request-chat-section").hidden = true;
       await loadTranslationRequests();
       if (state.user?.role === "admin") await loadAdminTranslationRequests();
     } catch (error) {
@@ -3811,6 +3837,14 @@
     }
   }
 
+  async function publishPrivateRequestCta() {
+    const button = $("#publish-private-request-cta");
+    if (!button || !confirm("سيتم نشر إعلان واحد في قناة Discord العامة مع زر اطلب تعريب. متابعة؟")) return;
+    button.disabled = true;
+    try { const result = await api("/api/admin/translation-requests/discord-cta", { method: "POST" }); toast(result.message || "تم نشر الإعلان."); }
+    catch (error) { toast(error.message, "error"); } finally { button.disabled = false; }
+  }
+
   function renderUsers() {
     const list = $("#admin-users");
     const model = {
@@ -4081,9 +4115,11 @@
   $("#copy-recovery-code").addEventListener("click", copyRecoveryCode);
   $("#confirm-recovery-code").addEventListener("click", confirmRecoveryCodeSaved);
   $("#translation-request-form").addEventListener("submit", submitTranslationRequest);
+  $("#request-chat-form").addEventListener("submit", submitPrivateRequestMessage);
   $("#support-ticket-form").addEventListener("submit", createSupportTicket);
   $("#support-message-form").addEventListener("submit", sendSupportMessage);
   $("#new-ticket-button").addEventListener("click", showSupportCreate);
+  $("#publish-private-request-cta")?.addEventListener("click", publishPrivateRequestCta);
   $("#support-ticket-status").addEventListener("click", toggleSupportTicketStatus);
   $("#support-ticket-delete").addEventListener("click", deleteSupportTicket);
   $("#support-message-form").elements.attachment.addEventListener("change", (event) => {
@@ -4126,7 +4162,6 @@
     replacePreviewMedia("newsCover", event.currentTarget.files);
     renderNewsPreview();
   });
-  $("#translation-request-form").elements.requestImage.addEventListener("change", (event) => updateFileLabel(event.currentTarget));
   $("#translation-form").elements.downloadFile.addEventListener("change", (event) => {
     updateFileLabel(event.currentTarget);
     syncDownloadFields();
