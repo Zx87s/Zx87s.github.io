@@ -9,7 +9,7 @@
   const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
   const MAX_UPLOAD_IMAGE_BYTES = 700 * 1024;
   const MAX_IMAGE_DIMENSION = 1920;
-  const MAX_TRANSLATION_FILE_BYTES = 512 * 1024 * 1024;
+  const MAX_TRANSLATION_FILE_BYTES = 10 * 1024 * 1024 * 1024;
   const SUPPORT_CHUNK_SIZE = 512 * 1024;
   const SUPPORT_IMAGE_MAX_SIZE = 5 * 1024 * 1024;
   const SUPPORT_VIDEO_MAX_SIZE = 25 * 1024 * 1024;
@@ -80,9 +80,9 @@
     invoices: [],
     adminInvoices: [],
     adminInvoiceFilter: "pending",
-    translationRequests: [],
-    activePrivateRequest: null,
-    adminTranslationRequests: [],
+    suggestions: [],
+    adminSuggestions: [],
+    steamSuggestionPreview: null,
     activeTranslation: null,
     comments: [],
     commentsLoading: false,
@@ -266,7 +266,7 @@
     closeDialog("recovery-code-dialog");
     $("#recovery-code-value").textContent = "";
     if (state.afterAuth === "vip") openVipSupport().catch((error) => toast(error.message, "error"));
-    else if (state.afterAuth === "translation-request") openTranslationRequest().catch((error) => toast(error.message, "error"));
+    else if (state.afterAuth === "suggestion") openSuggestion().catch((error) => toast(error.message, "error"));
   }
 
   async function api(path, options = {}) {
@@ -2119,8 +2119,8 @@
         showRecoveryCode(result.recoveryCode);
       } else if (state.afterAuth === "vip") {
         openVipSupport().catch((error) => toast(error.message, "error"));
-      } else if (state.afterAuth === "translation-request") {
-        openTranslationRequest().catch((error) => toast(error.message, "error"));
+      } else if (state.afterAuth === "suggestion") {
+        openSuggestion().catch((error) => toast(error.message, "error"));
       }
     } catch (error) {
       $("#auth-message").textContent = error.message;
@@ -2383,10 +2383,35 @@
       const info = make("div", "request-history-info");
       info.append(make("strong", "", request.gameName), make("time", "", formatDateTime(request.createdAt)));
       if (request.quotedPrice || request.quotedDuration) info.append(make("small", "request-offer", `العرض: ${request.quotedPrice || "بانتظار السعر"} · ${request.quotedDuration || "بانتظار المدة"}`));
+      if (request.paymentInstructions) {
+        const payment = make("p", "request-payment", request.paymentInstructions);
+        const paypal = make("a", "request-payment-link", "فتح PayPal");
+        paypal.href = "https://www.paypal.com/";
+        paypal.target = "_blank";
+        paypal.rel = "noopener noreferrer";
+        payment.append(" ", paypal);
+        info.append(payment);
+      }
       const action = make("button", "button ghost small", "فتح محادثة الطلب"); action.type = "button"; action.addEventListener("click", () => openPrivateRequestChat(request));
-      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)), action);
+      const actions = make("div", "request-history-actions");
+      actions.append(action);
+      if (request.deliveryReady) {
+        const download = make("button", "button approve small", "تحميل ملف التعريب");
+        download.type = "button";
+        download.addEventListener("click", () => downloadPrivateRequestDelivery(request));
+        actions.append(download);
+      }
+      row.append(image, info, make("span", `request-status ${request.status}`, translationRequestStatusLabel(request.status)), actions);
       return row;
     }));
+  }
+
+  async function downloadPrivateRequestDelivery(request) {
+    try {
+      const result = await api(`/api/translation-requests/${request.id}/delivery`, { method: "POST" });
+      if (!result.url) throw new Error("لم يُجهز رابط التسليم.");
+      window.location.assign(result.url);
+    } catch (error) { toast(error.message, "error"); }
   }
 
   async function openPrivateRequestChat(request) {
@@ -2401,11 +2426,13 @@
     const request = state.activePrivateRequest; if (!request) return;
     const result = await api(`/api/translation-requests/${request.id}/messages`);
     const list = $("#request-chat-messages");
-    list.replaceChildren(...(result.messages || []).map((message) => {
+    const messages = result.messages || [];
+    list.replaceChildren(...messages.map((message) => {
       const item = make("article", `request-chat-message ${message.senderTier}`);
       item.append(make("strong", "", `${message.senderUsername} · ${message.senderTier === "owner" ? "Owner" : message.senderTier === "mod" ? "Mod" : "صاحب الطلب"}`), make("p", "", message.body), make("time", "", formatDateTime(message.createdAt)));
       return item;
     }));
+    if (!messages.length) list.append(make("p", "empty-row compact", "تم فتح التذكرة تلقائيًا. سيظهر رد Owner هنا بعد المراجعة."));
     list.scrollTop = list.scrollHeight;
   }
 
@@ -2456,7 +2483,7 @@
       const metadataLength = new Uint8Array(4);
       new DataView(metadataLength.buffer).setUint32(0, metadata.byteLength);
       const body = new Blob([metadataLength, metadata], { type: "application/octet-stream" });
-      await api("/api/translation-requests", {
+      const createdResult = await api("/api/translation-requests", {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
         body,
@@ -2465,11 +2492,113 @@
       $("#translation-request-message").textContent = "تم إرسال الطلب. افتح محادثة الطلب لمعرفة رد Owner والسعر وطريقة الدفع.";
       $("#request-chat-section").hidden = true;
       await loadTranslationRequests();
+      const createdRequest = state.translationRequests.find((item) => item.id === createdResult.request?.id);
+      if (createdRequest) await openPrivateRequestChat(createdRequest);
       if (state.user?.role === "admin") await loadAdminTranslationRequests();
     } catch (error) {
       $("#translation-request-message").textContent = error.message;
     } finally {
       submit.disabled = state.translationRequests.some((item) => ["pending", "new", "reviewing", "offer_sent", "awaiting_payment", "paid", "in_progress", "ready"].includes(item.status));
+    }
+  }
+
+  function renderSuggestionHistory() {
+    const list = $("#suggestion-history");
+    if (!state.suggestions.length) {
+      list.replaceChildren(make("p", "empty-row compact", "لم ترسل اقتراحات بعد."));
+      return;
+    }
+    list.replaceChildren(...state.suggestions.map((suggestion) => {
+      const row = make("article", "suggestion-row");
+      const image = make("img", "suggestion-image");
+      image.src = suggestion.imageUrl;
+      image.alt = suggestion.gameName;
+      image.loading = "lazy";
+      const info = make("div", "suggestion-info");
+      const link = make("a", "", suggestion.gameName);
+      link.href = suggestion.steamUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      info.append(link, make("time", "", formatDateTime(suggestion.createdAt)));
+      const status = make("span", `suggestion-status ${suggestion.discordDelivery}`, suggestion.discordDelivery === "sent" ? "نُشر في Discord" : "بانتظار إعادة النشر");
+      row.append(image, info, status);
+      return row;
+    }));
+  }
+
+  async function loadSuggestions() {
+    const result = await api("/api/suggestions");
+    state.suggestions = result.suggestions || [];
+    renderSuggestionHistory();
+  }
+
+  function resetSuggestionPreview() {
+    state.steamSuggestionPreview = null;
+    $("#suggestion-preview").hidden = true;
+    $("#suggestion-form button[type=submit]").disabled = true;
+  }
+
+  async function previewSuggestion() {
+    const form = $("#suggestion-form");
+    const button = $("#suggestion-preview-button");
+    button.disabled = true;
+    $("#suggestion-message").textContent = "جارٍ التحقق من صفحة Steam…";
+    try {
+      const result = await api("/api/suggestions/steam-preview", {
+        method: "POST",
+        body: JSON.stringify({ gameName: form.elements.gameName.value, steamUrl: form.elements.steamUrl.value }),
+      });
+      state.steamSuggestionPreview = result.game;
+      $("#suggestion-preview-image").src = result.game.imageUrl;
+      $("#suggestion-preview-image").alt = result.game.gameName;
+      $("#suggestion-preview-name").textContent = result.game.gameName;
+      $("#suggestion-preview").hidden = false;
+      $("#suggestion-form button[type=submit]").disabled = false;
+      $("#suggestion-message").textContent = "تأكد من الاسم والصورة، ثم انشر الاقتراح.";
+    } catch (error) {
+      resetSuggestionPreview();
+      $("#suggestion-message").textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function openSuggestion() {
+    if (!state.user) {
+      state.afterAuth = "suggestion";
+      setAuthTab("login");
+      showDialog("auth-dialog");
+      return;
+    }
+    state.afterAuth = null;
+    $("#suggestion-message").textContent = "";
+    showDialog("suggestion-dialog");
+    await loadSuggestions();
+  }
+
+  async function submitSuggestion(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = $("button[type=submit]", form);
+    if (!state.steamSuggestionPreview) {
+      await previewSuggestion();
+      return;
+    }
+    submit.disabled = true;
+    $("#suggestion-message").textContent = "جارٍ نشر الاقتراح في Discord…";
+    try {
+      await api("/api/suggestions", {
+        method: "POST",
+        body: JSON.stringify({ gameName: form.elements.gameName.value, steamUrl: form.elements.steamUrl.value }),
+      });
+      form.reset();
+      resetSuggestionPreview();
+      $("#suggestion-message").textContent = "تم نشر الاقتراح. اهتمام المجتمع بالقلب يساعد في تحديد الأولوية.";
+      await loadSuggestions();
+      if (state.user?.tier === "owner") await loadAdminSuggestions();
+    } catch (error) {
+      $("#suggestion-message").textContent = error.message;
+      submit.disabled = false;
     }
   }
 
@@ -2607,7 +2736,7 @@
     renderUsers();
     renderAdminReports();
     renderAdminInvoices();
-    renderAdminTranslationRequests();
+    renderAdminSuggestions();
     renderInterfaceForm();
     renderTranslationPreview();
     renderNewsPreview();
@@ -2617,7 +2746,7 @@
     const overview = $("#admin-overview");
     overview.className = "admin-loading-grid";
     overview.replaceChildren(...Array.from({ length: 4 }, () => make("span", "admin-skeleton")));
-    ["#admin-translations", "#admin-news", "#admin-invoices", "#admin-users", "#admin-requests", "#admin-reports"].forEach((selector) => {
+    ["#admin-translations", "#admin-news", "#admin-invoices", "#admin-users", "#admin-suggestions", "#admin-reports"].forEach((selector) => {
       const list = $(selector);
       if (list && !list.children.length) list.replaceChildren(make("p", "empty-row compact", "جارٍ تحميل البيانات…"));
     });
@@ -2637,14 +2766,14 @@
         api(adminUsersEndpoint()),
         api("/api/admin/comment-reports"),
         api("/api/admin/paypal-invoices"),
-        api("/api/admin/translation-requests"),
+        api("/api/admin/suggestions"),
       ]);
       state.adminTranslations = translationResult.translations || [];
       state.adminNews = newsResult.news || [];
       applyAdminUsersResult(userResult);
       state.adminReports = reportResult.reports || [];
       state.adminInvoices = invoiceResult.invoices || [];
-      state.adminTranslationRequests = requestResult.requests || [];
+      state.adminSuggestions = requestResult.suggestions || [];
       adminDataLoadedAt = Date.now();
       renderAdminViews();
       return true;
@@ -2767,7 +2896,7 @@
     $("#admin-news-panel").hidden = tab !== "news";
     $("#admin-invoices-panel").hidden = tab !== "invoices";
     $("#admin-users-panel").hidden = tab !== "users";
-    $("#admin-requests-panel").hidden = tab !== "requests";
+    $("#admin-suggestions-panel").hidden = tab !== "suggestions";
     $("#admin-reports-panel").hidden = tab !== "reports";
     $("#admin-interface-panel").hidden = tab !== "interface";
     $("#admin-audit-panel").hidden = tab !== "audit";
@@ -2891,12 +3020,12 @@
   function renderAdminOverview() {
     $("#admin-overview").className = "admin-overview";
     const pendingInvoices = state.adminInvoices.filter((invoice) => invoice.status === "pending").length;
-    const pendingRequests = state.adminTranslationRequests.filter((request) => request.status === "pending").length;
+    const suggestionCount = state.adminSuggestions.length;
     const metrics = [
       ["التعريبات", state.adminTranslations.length, "download", "translations"],
       ["المستخدمون", state.adminUserAccountTotal, "user", "users"],
       ["فواتير معلقة", pendingInvoices, "receipt", "invoices"],
-      ["طلبات تعريب", pendingRequests, "gamepad", "requests"],
+      ["اقتراحات التعريب", suggestionCount, "gamepad", "suggestions"],
     ];
     $("#admin-overview").replaceChildren(...metrics.map(([label, value, iconName, tab]) => {
       const card = make("button", "admin-metric");
@@ -2911,8 +3040,8 @@
     }));
     const invoiceTab = $('[data-admin-tab="invoices"]');
     setIconText(invoiceTab, "receipt", pendingInvoices ? `فواتير PayPal (${pendingInvoices})` : "فواتير PayPal");
-    const requestsTab = $('[data-admin-tab="requests"]');
-    setIconText(requestsTab, "gamepad", pendingRequests ? `اطلب تعريبك (${pendingRequests})` : "اطلب تعريبك");
+    const suggestionsTab = $('[data-admin-tab="suggestions"]');
+    setIconText(suggestionsTab, "gamepad", suggestionCount ? `الاقتراحات (${suggestionCount})` : "الاقتراحات");
   }
 
   function imageExtension(name) {
@@ -3085,7 +3214,7 @@
 
   async function uploadTranslationFile(file, onProgress) {
     if (!(file instanceof File) || file.size < 1) throw new Error("اختر ملف تعريب صالحًا.");
-    if (file.size > MAX_TRANSLATION_FILE_BYTES) throw new Error("حجم ملف التعريب يتجاوز 512MB.");
+    if (file.size > MAX_TRANSLATION_FILE_BYTES) throw new Error("حجم ملف التعريب يتجاوز 10GB.");
     const session = await api("/api/admin/files/start", {
       method: "POST",
       body: JSON.stringify({ name: file.name, size: file.size, type: file.type }),
@@ -3513,7 +3642,7 @@
     if (state.editing?.downloadKey && !form.elements.downloadFile.files?.length) {
       note.textContent = `الملف الحالي: ${state.editing.downloadName} (${formatBytes(state.editing.downloadSize)}). اختر ملفًا جديدًا لاستبداله.`;
     } else if (isVip) {
-      note.textContent = "ملف VIP مطلوب، ويُرفع من الجهاز على أجزاء حتى 512MB.";
+      note.textContent = "ملف VIP مطلوب، ويُرفع من الجهاز على أجزاء حتى 10GB.";
     } else {
       note.textContent = "اختر ملفًا من الجهاز أو استخدم رابط التنزيل المجاني.";
     }
@@ -3761,6 +3890,111 @@
     renderAdminOverview();
   }
 
+  function requestStatusActionLabel(action) {
+    return ({
+      confirm_payment: "تأكيد استلام الدفع",
+      start_work: "بدء التنفيذ",
+      complete: "إغلاق الطلب",
+      cancel: "إلغاء الطلب",
+      await_payment: "وضعه بانتظار الدفع",
+    })[action] || action;
+  }
+
+  async function openAdminPrivateRequestChat(request) {
+    state.activeAdminPrivateRequest = request;
+    $("#admin-request-chat").hidden = false;
+    $("#admin-request-chat-title").textContent = `تذكرة «${request.gameName}»`;
+    $("#admin-request-chat-meta").textContent = `${request.user.username} · #${request.user.id} · ${translationRequestStatusLabel(request.status)}`;
+    renderAdminRequestStatusActions();
+    await loadAdminPrivateRequestMessages();
+    $("#admin-request-chat").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function loadAdminPrivateRequestMessages() {
+    const request = state.activeAdminPrivateRequest;
+    if (!request) return;
+    const result = await api(`/api/translation-requests/${request.id}/messages`);
+    const list = $("#admin-request-chat-messages");
+    const messages = result.messages || [];
+    list.replaceChildren(...messages.map((message) => {
+      const item = make("article", `request-chat-message ${message.senderTier}`);
+      item.append(make("strong", "", `${message.senderUsername} · ${message.senderTier === "owner" ? "Owner" : message.senderTier === "mod" ? "Mod" : "صاحب الطلب"}`), make("p", "", message.body), make("time", "", formatDateTime(message.createdAt)));
+      return item;
+    }));
+    if (!messages.length) list.append(make("p", "empty-row compact", "هذه التذكرة فُتحت تلقائيًا، ولم تصل رسالة بعد."));
+    list.scrollTop = list.scrollHeight;
+  }
+
+  async function submitAdminPrivateRequestMessage(event) {
+    event.preventDefault();
+    const request = state.activeAdminPrivateRequest;
+    if (!request) return;
+    const form = event.currentTarget;
+    const input = form.elements.body;
+    const body = input.value.trim();
+    if (!body) return;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      await api(`/api/translation-requests/${request.id}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+      input.value = "";
+      await loadAdminPrivateRequestMessages();
+    } catch (error) { toast(error.message, "error"); }
+    finally { button.disabled = false; }
+  }
+
+  function renderAdminRequestStatusActions() {
+    const request = state.activeAdminPrivateRequest;
+    const list = $("#admin-request-status-actions");
+    if (!request) { list.replaceChildren(); return; }
+    list.replaceChildren();
+    const actions = [];
+    if (["offer_sent", "awaiting_payment"].includes(request.status)) actions.push("confirm_payment");
+    if (request.status === "offer_sent") actions.push("await_payment");
+    if (request.status === "paid") actions.push("start_work");
+    if (request.status === "ready") actions.push("complete");
+    if (!["completed", "rejected", "cancelled"].includes(request.status)) actions.push("cancel");
+    actions.forEach((action) => {
+      const button = makeIconText("button", `button ${action === "cancel" ? "danger" : "ghost"} small`, requestStatusActionLabel(action), action === "cancel" ? "trash" : "check");
+      button.type = "button";
+      button.addEventListener("click", () => changeTranslationRequestStatus(request, action));
+      list.append(button);
+    });
+  }
+
+  async function changeTranslationRequestStatus(request, action) {
+    if (!confirm(`تأكيد الإجراء: ${requestStatusActionLabel(action)}؟`)) return;
+    try {
+      await api(`/api/admin/translation-requests/${request.id}`, { method: "PATCH", body: JSON.stringify({ action }) });
+      await loadAdminTranslationRequests();
+      const updated = state.adminTranslationRequests.find((item) => item.id === request.id);
+      if (updated) await openAdminPrivateRequestChat(updated);
+      toast(`تم تنفيذ: ${requestStatusActionLabel(action)}.`);
+    } catch (error) { toast(error.message, "error"); }
+  }
+
+  async function uploadAdminPrivateRequestDelivery() {
+    const request = state.activeAdminPrivateRequest;
+    const input = $("#admin-request-delivery-file");
+    const file = input?.files?.[0];
+    if (!request || !file) { toast("اختر ملف ZIP أولًا.", "error"); return; }
+    if (!/\.zip$/i.test(file.name)) { toast("ملف التسليم يجب أن يكون ZIP.", "error"); return; }
+    const button = $("#admin-request-delivery-upload");
+    button.disabled = true;
+    try {
+      const uploaded = await uploadTranslationFile(file, (uploadedBytes, totalBytes) => {
+        const percent = Math.min(100, Math.round((uploadedBytes / totalBytes) * 100));
+        button.textContent = `جارٍ رفع التسليم… ${percent}%`;
+      });
+      await api(`/api/admin/translation-requests/${request.id}/delivery`, { method: "POST", body: JSON.stringify({ key: uploaded.key, name: uploaded.name, size: uploaded.size }) });
+      await loadAdminTranslationRequests();
+      const updated = state.adminTranslationRequests.find((item) => item.id === request.id);
+      if (updated) await openAdminPrivateRequestChat(updated);
+      toast("تم رفع التعريب وأصبح متاحًا لصاحب الطلب فقط.");
+    } catch (error) { toast(error.message, "error"); }
+    finally { button.disabled = false; button.textContent = "رفع التسليم وإرساله لصاحب الطلب"; input.value = ""; $("#admin-request-delivery-name").textContent = "لم يُحدد ملف"; }
+  }
+
   function renderAdminTranslationRequests() {
     const list = $("#admin-requests");
     if (!state.adminTranslationRequests.length) {
@@ -3797,6 +4031,10 @@
         reject.addEventListener("click", () => reviewTranslationRequest(request, "reject"));
         actions.append(approve, reject);
       }
+      const chat = makeIconText("button", "button ghost small", "فتح التذكرة", "message");
+      chat.type = "button";
+      chat.addEventListener("click", () => openAdminPrivateRequestChat(request));
+      actions.append(chat);
       const remove = makeIconText("button", "button danger small", "حذف الطلب", "trash");
       remove.type = "button";
       remove.addEventListener("click", () => deleteTranslationRequest(request));
@@ -3813,12 +4051,15 @@
       const quotedPrice = action === "send_offer" ? prompt("السعر النهائي مع العملة:") : null;
       const quotedDuration = action === "send_offer" ? prompt("مدة التنفيذ:") : null;
       if (action === "send_offer" && (!quotedPrice || !quotedDuration)) return;
+      const paymentInstructions = action === "send_offer" ? prompt("تعليمات إضافية للدفع (اختياري؛ سيضاف رابط PayPal والمبلغ تلقائيًا):", "") : null;
       await api(`/api/admin/translation-requests/${request.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ action, quotedPrice, quotedDuration }),
+        body: JSON.stringify({ action, quotedPrice, quotedDuration, paymentInstructions }),
       });
       await loadAdminTranslationRequests();
-      toast(action === "send_offer" ? "تم إرسال العرض." : "تم رفض الطلب.");
+      const updated = state.adminTranslationRequests.find((item) => item.id === request.id);
+      if (updated) await openAdminPrivateRequestChat(updated);
+      toast(action === "send_offer" ? "تم إرسال العرض وPayPal داخل التذكرة." : "تم رفض الطلب.");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -3843,6 +4084,54 @@
     button.disabled = true;
     try { const result = await api("/api/admin/translation-requests/discord-cta", { method: "POST" }); toast(result.message || "تم نشر الإعلان."); }
     catch (error) { toast(error.message, "error"); } finally { button.disabled = false; }
+  }
+
+  async function loadAdminSuggestions() {
+    if (state.user?.tier !== "owner") return;
+    const result = await api("/api/admin/suggestions");
+    state.adminSuggestions = result.suggestions || [];
+    renderAdminSuggestions();
+    renderAdminOverview();
+  }
+
+  function renderAdminSuggestions() {
+    const list = $("#admin-suggestions");
+    if (!list) return;
+    if (!state.adminSuggestions.length) {
+      list.replaceChildren(make("p", "empty-row", "لا توجد اقتراحات حتى الآن."));
+      return;
+    }
+    list.replaceChildren(...state.adminSuggestions.map((suggestion) => {
+      const row = make("article", "admin-row suggestion-admin-row");
+      const image = make("img", "suggestion-admin-image");
+      image.src = suggestion.imageUrl;
+      image.alt = suggestion.gameName;
+      image.loading = "lazy";
+      const info = make("div", "admin-row-info");
+      const title = make("a", "", suggestion.gameName);
+      title.href = suggestion.steamUrl;
+      title.target = "_blank";
+      title.rel = "noopener noreferrer";
+      info.append(
+        title,
+        make("span", "", `${suggestion.user.username} · #${suggestion.user.id} · ${formatDateTime(suggestion.createdAt)}`),
+        make("span", `suggestion-status ${suggestion.discordDelivery}`, suggestion.discordDelivery === "sent" ? "نُشر في Discord" : "تعذر إعلان Discord"),
+      );
+      const remove = makeIconText("button", "button danger small", "حذف الاقتراح", "trash");
+      remove.type = "button";
+      remove.addEventListener("click", async () => {
+        if (!confirm(`حذف اقتراح «${suggestion.gameName}»؟`)) return;
+        try {
+          await api(`/api/admin/suggestions/${suggestion.id}`, { method: "DELETE" });
+          state.adminSuggestions = state.adminSuggestions.filter((item) => item.id !== suggestion.id);
+          renderAdminSuggestions();
+          renderAdminOverview();
+          toast("تم حذف الاقتراح.");
+        } catch (error) { toast(error.message, "error"); }
+      });
+      row.append(image, info, remove);
+      return row;
+    }));
   }
 
   function renderUsers() {
@@ -4105,7 +4394,7 @@
   $("#support-button").addEventListener("click", openSupport);
   $("#notification-button").addEventListener("click", openNotifications);
   $("#privacy-button").addEventListener("click", () => showDialog("privacy-dialog"));
-  $("#translation-request-button").addEventListener("click", () => openTranslationRequest().catch((error) => toast(error.message, "error")));
+  $("#suggestion-button").addEventListener("click", () => openSuggestion().catch((error) => toast(error.message, "error")));
   $("#vip-support-button").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
   $("#invoice-shortcut").addEventListener("click", () => openVipSupport().catch((error) => toast(error.message, "error")));
   $("#admin-button").addEventListener("click", openControlCenter);
@@ -4114,12 +4403,12 @@
   $("#recovery-code-form").addEventListener("submit", generateRecoveryCode);
   $("#copy-recovery-code").addEventListener("click", copyRecoveryCode);
   $("#confirm-recovery-code").addEventListener("click", confirmRecoveryCodeSaved);
-  $("#translation-request-form").addEventListener("submit", submitTranslationRequest);
-  $("#request-chat-form").addEventListener("submit", submitPrivateRequestMessage);
+  $("#suggestion-form").addEventListener("submit", submitSuggestion);
+  $("#suggestion-preview-button").addEventListener("click", previewSuggestion);
+  ["gameName", "steamUrl"].forEach((name) => $("#suggestion-form").elements[name].addEventListener("input", resetSuggestionPreview));
   $("#support-ticket-form").addEventListener("submit", createSupportTicket);
   $("#support-message-form").addEventListener("submit", sendSupportMessage);
   $("#new-ticket-button").addEventListener("click", showSupportCreate);
-  $("#publish-private-request-cta")?.addEventListener("click", publishPrivateRequestCta);
   $("#support-ticket-status").addEventListener("click", toggleSupportTicketStatus);
   $("#support-ticket-delete").addEventListener("click", deleteSupportTicket);
   $("#support-message-form").elements.attachment.addEventListener("change", (event) => {
@@ -4189,15 +4478,16 @@
   setIconText($("#account-form button[type=submit]"), "save", "حفظ");
   setIconText($("#recovery-code-form button[type=submit]"), "key", "إنشاء رمز استرداد جديد");
   setIconText($("#copy-recovery-code"), "copy", "نسخ الرمز");
-  setIconText($("#translation-request-button"), "gamepad", "اطلب تعريبك");
-  setIconText($("#translation-request-form button[type=submit]"), "gamepad", "إرسال الطلب");
+  setIconText($("#suggestion-button"), "gamepad", "اقتراح تعريب");
+  setIconText($("#suggestion-preview-button"), "eye", "معاينة اللعبة");
+  setIconText($("#suggestion-form button[type=submit]"), "gamepad", "نشر الاقتراح");
   setIconText($("#new-ticket-button"), "headset", "تذكرة جديدة");
   setIconText($("#support-ticket-form button[type=submit]"), "headset", "فتح التذكرة وبدء المحادثة");
   setIconText($("#support-message-form button[type=submit]"), "send", "إرسال");
   setIconText($("#translation-form button[type=submit]"), "save", "حفظ التعريب");
   setIconText($("#news-form button[type=submit]"), "news", "نشر الخبر");
   setIconText($("#invoice-form button[type=submit]"), "receipt", "إرسال للمراجعة");
-  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", requests: "gamepad", reports: "flag", interface: "layout", audit: "calendar" };
+  const adminTabIcons = { translations: "download", news: "news", invoices: "receipt", users: "user", suggestions: "gamepad", reports: "flag", interface: "layout", audit: "calendar" };
   $$('[data-admin-tab]').forEach((button) => setIconText(button, adminTabIcons[button.dataset.adminTab], button.textContent));
   $$(".file-button").forEach((node) => setIconText(node, "upload", node.textContent));
   $("#translation-form").elements.publishedAt.value = toDateTimeLocal(new Date());
