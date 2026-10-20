@@ -7,7 +7,7 @@
     <meta name="robots" content="index,follow,max-image-preview:large" />
     <meta name="theme-color" content="#09090b" />
     <meta name="referrer" content="no-referrer" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://ta3reebat-memberships.zx87s.chatgpt.site; media-src 'self' blob:; connect-src 'self' https://ta3reebat-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://ta3reebat-memberships.zx87s.chatgpt.site https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com; media-src 'self' blob:; connect-src 'self' https://ta3reebat-memberships.zx87s.chatgpt.site; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
     <title>تعريبات Zx87s</title>
     <link rel="canonical" href="https://zx87s.github.io/" />
     <link rel="sitemap" type="application/xml" href="https://zx87s.github.io/sitemap.xml" />
@@ -20,8 +20,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=38" />
-    <script src="./app.js?v=38" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=42" />
+    <script src="./app.js?v=42" defer></script>
   </head>
   <body>
     <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
@@ -35,7 +35,7 @@
           <a href="#news">الأخبار</a>
           <a href="#library">المكتبة</a>
           <a href="#vip">VIP</a>
-          <button class="nav-action" id="translation-request-button" type="button">اطلب تعريبك</button>
+          <button class="nav-action" id="suggestion-button" type="button">اقتراح تعريب</button>
           <a class="discord-link" href="https://discord.com/invite/Abc3unQS3m" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 5.3A17 17 0 0 0 15.4 4l-.5 1a15 15 0 0 0-5.8 0l-.5-1a17 17 0 0 0-4.1 1.3C1.9 9.1 1.2 12.8 1.5 16.4a16 16 0 0 0 5 2.6l1.2-1.7a10 10 0 0 1-1.8-.9l.5-.4c3.5 1.6 7.4 1.6 11 0l.6.4a12 12 0 0 1-1.9.9l1.2 1.7a16 16 0 0 0 5-2.6c.4-4.2-.7-7.9-2.8-11.1ZM8.6 14.3c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Zm6.8 0c-1.1 0-2-1-2-2.3s.9-2.3 2-2.3 2 1 2 2.3-.9 2.3-2 2.3Z"/></svg>
             <span>مجتمع</span>
@@ -101,7 +101,7 @@
                 <li>تنزيل جميع التعريبات المجانية بعد تسجيل الدخول</li>
                 <li>مشاهدة تفاصيل وصور جميع التعريبات</li>
                 <li>التعليق والرد والتفاعل مع المجتمع</li>
-                <li>إرسال طلب تعريب خاص وتذاكر الدعم الفني</li>
+                <li>اقتراح ألعاب جديدة للتعريب وفتح تذاكر الدعم الفني</li>
               </ul>
               <button class="button ghost wide" id="free-membership-button" type="button">إنشاء حساب مجاني</button>
             </article>
@@ -286,23 +286,20 @@
       </section>
     </dialog>
 
-    <dialog id="translation-request-dialog" class="modal">
-      <section class="modal-card request-card" aria-labelledby="translation-request-title">
-        <button class="modal-close" data-close="translation-request-dialog" aria-label="إغلاق">×</button>
-        <div class="modal-heading"><div><p class="eyebrow">خدمة تعريب خاصة مدفوعة</p><h2 id="translation-request-title">اطلب تعريبك</h2><p>أرسل معلومات اللعبة فقط. بعد المراجعة يراسلك Owner داخل الطلب بالسعر النهائي وطريقة الدفع والمدة.</p></div></div>
-        <section class="request-steps" aria-label="خطوات طلب التعريب"><h3>كيف تتم العملية؟</h3><ol><li>ترسل اسم اللعبة ورابط Steam والوصف والميزانية.</li><li>يراجع Owner الطلب ويحدد السعر والمدة المناسبة.</li><li>تصلك تعليمات الدفع داخل محادثة طلبك الخاصة.</li><li>بعد تأكيد الدفع يبدأ العمل، ثم يظهر رابط التسليم لك وحدك.</li></ol></section>
-        <form id="translation-request-form" class="form-grid">
-          <label>اسم اللعبة<input name="gameName" maxlength="120" required /></label>
-          <label>رابط اللعبة في Steam<input name="steamUrl" type="url" inputmode="url" placeholder="https://store.steampowered.com/app/..." required /></label>
-          <label>وصف اللعبة ونطاق التعريب<textarea name="reason" rows="5" minlength="15" maxlength="3000" required></textarea></label>
-          <label>ميزانيتك المتوقعة<input name="estimatedBudget" maxlength="100" placeholder="مثال: 100 دولار" required /></label>
-          <label>المدة المطلوبة<input name="requestedTimeline" maxlength="100" placeholder="مثال: خلال شهر" required /></label>
-          <label class="terms-check"><input name="termsAccepted" type="checkbox" required /><span>أفهم أن السعر والمدة يحددهما Owner بعد المراجعة، وأن الدفع يدوي ولا يبدأ العمل قبل تأكيد استلامه.</span></label>
-          <button class="button primary" type="submit">إرسال الطلب</button>
+    <dialog id="suggestion-dialog" class="modal">
+      <section class="modal-card request-card" aria-labelledby="suggestion-title">
+        <button class="modal-close" data-close="suggestion-dialog" aria-label="إغلاق">×</button>
+        <div class="modal-heading"><div><p class="eyebrow">اقتراحات المجتمع</p><h2 id="suggestion-title">اقتراح تعريب</h2><p>اقترح لعبة واحدة من Steam، وسنرسلها إلى مجتمع Discord للتصويت.</p></div></div>
+        <section class="suggestion-rules" aria-label="نظام اقتراح التعريبات"><h3>كيف يعمل النظام؟</h3><p>يُنشر اقتراحك في Discord مع صورة اللعبة. اللعبة التي تحصل على أكبر اهتمام وتفاعلات ❤️ تكون لها أولوية التعريب.</p><p>إذا كنت تريد تعريب لعبة كاملة بشكل خاص، يمكنك التواصل مع Owner عبر الدعم الفني مقابل مبلغ بسيط يُحدد حسب حجم اللعبة.</p></section>
+        <form id="suggestion-form" class="form-grid">
+          <label>اسم اللعبة<input name="gameName" maxlength="120" autocomplete="off" required /></label>
+          <label>رابط اللعبة في Steam<input name="steamUrl" type="url" inputmode="url" dir="ltr" placeholder="https://store.steampowered.com/app/..." required /></label>
+          <button class="button ghost" id="suggestion-preview-button" type="button">معاينة اللعبة</button>
+          <figure class="suggestion-preview" id="suggestion-preview" hidden><img id="suggestion-preview-image" alt="صورة اللعبة من Steam" /><figcaption><strong id="suggestion-preview-name"></strong><span>صورة اللعبة من Steam</span></figcaption></figure>
+          <button class="button primary" id="suggestion-submit" type="submit" disabled>نشر الاقتراح</button>
         </form>
-        <p class="form-message" id="translation-request-message" role="status"></p>
-        <section class="request-history-section"><h3>طلباتي</h3><div id="translation-request-history" class="request-history"></div></section>
-        <section class="request-chat-section" id="request-chat-section" hidden><h3 id="request-chat-title">محادثة الطلب</h3><p class="muted">هنا يرسل Owner السعر والمدة وطريقة الدفع. لا ترسل بيانات بطاقتك البنكية داخل المحادثة.</p><div id="request-chat-messages" class="request-chat-messages"></div><form id="request-chat-form" class="inline-message-form"><input name="body" maxlength="2000" placeholder="اكتب رسالتك إلى Owner…" required /><button class="button primary" type="submit">إرسال</button></form></section>
+        <p class="form-message" id="suggestion-message" role="status"></p>
+        <section class="request-history-section"><h3>اقتراحاتي</h3><div id="suggestion-history" class="request-history"></div></section>
       </section>
     </dialog>
 
@@ -319,7 +316,7 @@
           <button class="tab" type="button" data-admin-tab="news">الأخبار</button>
           <button class="tab" type="button" data-admin-tab="invoices">فواتير PayPal</button>
           <button class="tab" type="button" data-admin-tab="users">المستخدمون</button>
-          <button class="tab" type="button" data-admin-tab="requests">اطلب تعريبك</button>
+          <button class="tab" type="button" data-admin-tab="suggestions">الاقتراحات</button>
           <button class="tab" type="button" data-admin-tab="reports">البلاغات</button>
           <button class="tab" type="button" data-admin-tab="interface">تخصيص الواجهة</button>
           <button class="tab" type="button" data-admin-tab="audit">سجل النشاط</button>
@@ -340,7 +337,7 @@
             <label class="check-label"><input name="earlyAccess" type="checkbox" /> وصول مبكر لأعضاء VIP</label>
             <label>موعد الإتاحة المجانية (اختياري)<input name="freeAt" type="datetime-local" /><small>إن تُرك فارغًا، يبقى الوصول المبكر مخصصًا لـVIP.</small></label>
             <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
-            <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 512MB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
+            <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 10GB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
             <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
             <label class="file-field">صور داخل اللعبة (حتى 4)<span class="file-picker"><span data-file-label="gallery">لم تُحدد صور</span><span class="file-button">اختيار صور</span><input name="gallery" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></span></label>
             <label>تاريخ النشر<input name="publishedAt" type="datetime-local" /></label>
@@ -412,9 +409,9 @@
           <div class="admin-list" id="admin-users"></div>
           <div id="admin-users-pagination"></div>
         </section>
-        <section id="admin-requests-panel" hidden>
-          <div class="admin-panel-heading"><div><p class="eyebrow">الخدمة المدفوعة</p><h3>اطلب تعريبك</h3><p class="admin-subtitle">راجع الطلب، أرسل العرض، تحدث مع العميل، ثم أكد الدفع وارفع التسليم.</p></div><button class="button ghost small" id="publish-private-request-cta" type="button">نشر إعلان Discord العام</button></div>
-          <div class="admin-list" id="admin-requests"></div>
+        <section id="admin-suggestions-panel" hidden>
+          <div class="admin-panel-heading"><div><p class="eyebrow">اهتمام المجتمع</p><h3>اقتراحات التعريب</h3><p class="admin-subtitle">كل اقتراح يُنشر تلقائيًا في Discord مع صورة Steam ورابط اللعبة.</p></div></div>
+          <div class="admin-list" id="admin-suggestions"></div>
         </section>
         <section id="admin-reports-panel" hidden><h3>بلاغات صور الحسابات</h3><div class="admin-list" id="admin-avatar-reports"></div><h3>بلاغات التعليقات</h3><div class="admin-list" id="admin-reports"></div></section>
         <section id="admin-audit-panel" hidden>
@@ -503,7 +500,7 @@
           <section>
             <h3>البيانات التي نجمعها</h3>
             <p>عند إنشاء حساب نطلب اسم المستخدم والبريد الإلكتروني وكلمة المرور. لا تُحفظ كلمة المرور بصورتها الأصلية، بل تُخزن كقيمة تحقق أحادية الاتجاه مع قيمة عشوائية خاصة بها. ونحفظ أيضًا رقم الحساب، فئة العضوية، تاريخ إنشاء الحساب والجلسات النشطة.</p>
-            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، وطلبات التعريب وصور الألعاب المرفوعة معها. ولحساب الزوار المتصلين في اللحظة الحالية ننشئ معرّف زيارة عشوائيًا في المتصفح ونحفظ وقت نشاطه لمدة محدودة؛ يظهر إلى Owner العدد الإجمالي فقط دون أسماء الزوار أو عناوينهم. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
+            <p>عند استخدام الموقع قد نسجل التعريبات التي نزلتها، والتعليقات والردود والقلوب والبلاغات التي أرسلتها، وحالة قراءة الإشعارات، واقتراحات التعريب المرتبطة بحسابك وروابط Steam الخاصة بها. ولحساب الزوار المتصلين في اللحظة الحالية ننشئ معرّف زيارة عشوائيًا في المتصفح ونحفظ وقت نشاطه لمدة محدودة؛ يظهر إلى Owner العدد الإجمالي فقط دون أسماء الزوار أو عناوينهم. ولحماية الحسابات من المحاولات المتكررة نستخدم معرّفًا تقنيًا مجزأً مشتقًا من عنوان الشبكة وبيانات محاولة الدخول، ولا نستخدمه للإعلانات.</p>
           </section>
 
           <section>
