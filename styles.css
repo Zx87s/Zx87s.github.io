@@ -47,9 +47,6 @@ a { color: inherit; text-decoration: none; }
 .project-info { display: grid; gap: 7px; margin: 10px 0; font-size: .9rem; color: var(--muted); }
 .project-info p { margin: 0; }
 .project-info progress { width: 100%; height: 10px; accent-color: var(--gold); }
-.rating-controls { display: flex; flex-wrap: wrap; gap: 8px; }
-.rating-summary, .selected-rating { color: var(--gold); }
-.selected-rating { border-color: var(--gold); }
 #upcoming-section { margin-top: 40px; }
 @media(max-width: 640px) { .advanced-filters { grid-template-columns: 1fr; } }
 .account-avatar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-block: 20px; }
@@ -810,6 +807,168 @@ footer { border-top: 1px solid var(--line); color: #71717a; }
   .page-loading-bar::after, .page-loading-label i, .admin-skeleton::after, .content-skeleton::after { animation: none !important; }
 }
 
+/* Cartoon editorial refresh */
+body {
+  font-family: "Noto Kufi Arabic", "Noto Sans Arabic", Tahoma, "Segoe UI", Arial, sans-serif;
+  letter-spacing: .005em;
+}
+
+h1, h2, h3, h4, .brand, .button, .tab {
+  font-family: "Noto Kufi Arabic", Tahoma, "Segoe UI", Arial, sans-serif;
+  font-weight: 800;
+}
+
+.catalog-card {
+  border: 2px solid rgba(225, 180, 89, .42);
+  border-radius: 26px 18px 28px 16px;
+  box-shadow: 0 15px 0 rgba(0, 0, 0, .24), 0 22px 48px rgba(0, 0, 0, .28);
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.catalog-card::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed rgba(255, 224, 155, .16);
+  border-radius: 18px 12px 20px 11px;
+  pointer-events: none;
+}
+
+.catalog-card:hover {
+  border-color: rgba(255, 205, 93, .85);
+  transform: translateY(-5px) rotate(-.2deg);
+}
+
+.card-body { gap: 14px; }
+.card-title-row h3 { line-height: 1.55; text-wrap: balance; }
+.card-description { line-height: 1.85; color: var(--muted); }
+
+.cartoon-panel {
+  background: linear-gradient(145deg, rgba(255, 238, 194, .07), rgba(0, 0, 0, .18));
+  border: 1px solid rgba(225, 180, 89, .22);
+  border-radius: 16px 11px 17px 10px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .05);
+}
+
+.card-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+  padding: 9px;
+  direction: rtl;
+}
+
+.metric-item,
+.card-metrics .stat-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px;
+  color: #ded5c4;
+  background: rgba(7, 6, 5, .55);
+  border: 1px solid rgba(255, 255, 255, .055);
+  border-radius: 10px 7px 11px 6px;
+  font-size: .78rem;
+}
+
+.metric-item .ui-icon,
+.card-metrics .stat-line .ui-icon { color: var(--gold); flex: 0 0 auto; }
+.metric-wide { grid-column: 1 / -1; }
+
+.detail-card { border: 2px solid rgba(225, 180, 89, .45); }
+.detail-hero, .detail-section {
+  border-radius: 24px 15px 25px 14px;
+  box-shadow: 0 10px 0 rgba(0, 0, 0, .18);
+}
+
+.detail-info h2 { text-wrap: balance; line-height: 1.45; }
+.detail-description { line-height: 1.95; }
+
+.admin-card {
+  background:
+    radial-gradient(circle at 94% 2%, rgba(207, 142, 40, .13), transparent 30%),
+    linear-gradient(160deg, #18130e, #0a0908 55%);
+  border: 2px solid rgba(225, 180, 89, .44);
+}
+
+.admin-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 10px;
+  border: 1px solid rgba(225, 180, 89, .2);
+  border-radius: 18px 12px 19px 11px;
+  background: rgba(13, 11, 9, .92);
+  backdrop-filter: blur(14px);
+}
+
+.admin-editor-form { align-content: start; }
+
+.admin-editor-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 17px;
+  border: 1px solid rgba(225, 180, 89, .23);
+  border-radius: 19px 12px 20px 11px;
+  background: linear-gradient(145deg, rgba(255, 235, 188, .055), rgba(0, 0, 0, .18));
+}
+
+.admin-editor-section > legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 7px;
+  color: #f5d48e;
+  font-weight: 800;
+}
+
+.admin-editor-section > legend b {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  color: #151008;
+  background: linear-gradient(135deg, #f1cf7c, #b7791f);
+  border-radius: 9px 6px 10px 5px;
+  box-shadow: 0 3px 0 #6e4510;
+}
+
+.manual-size-field {
+  display: grid;
+  grid-template-columns: 1fr 105px;
+  gap: 10px;
+  align-content: end;
+}
+
+.manual-size-field small { color: var(--muted); line-height: 1.65; }
+
+.admin-row {
+  border: 1px solid rgba(225, 180, 89, .21);
+  border-radius: 18px 11px 19px 10px;
+  background: linear-gradient(145deg, rgba(255, 234, 180, .045), rgba(0, 0, 0, .18));
+  box-shadow: 0 7px 0 rgba(0, 0, 0, .2);
+}
+
+.admin-translation-thumb { border: 2px solid rgba(225, 180, 89, .27); border-radius: 14px 9px 15px 8px; }
+.admin-translation-metrics { max-width: 680px; }
+.admin-translation-metrics .metric-item { color: #f2dfb1; }
+
+@media (max-width: 720px) {
+  .admin-editor-section { grid-template-columns: 1fr; padding: 13px; }
+  .admin-editor-section .span-2 { grid-column: auto; }
+  .manual-size-field { grid-template-columns: minmax(0, 1fr) 88px; }
+  .card-metrics { grid-template-columns: 1fr 1fr; }
+  .metric-item, .card-metrics .stat-line { font-size: .72rem; padding: 7px; }
+  .catalog-card:hover { transform: none; }
+}
+
 .library-section { padding-block-start: 38px; }
 .library-section .section-heading h1 { margin: 5px 0 0; font-size: clamp(var(--section-title-min),var(--section-title-fluid),var(--section-title-max)); line-height: 1.3; }
 .memberships-section { padding-block: 52px 72px; background-image: none; border-top: 1px solid var(--line); }
@@ -1109,7 +1268,7 @@ input[type="checkbox"], input[type="radio"] { box-shadow: none; accent-color: va
 .modal-close:hover { background: #e25c4c; transform: rotate(8deg) scale(1.05); }
 .detail-cover, .detail-gallery img, .image-modal img { border: 3px solid var(--ink); border-radius: var(--hand-radius-sm); box-shadow: 5px 5px 0 rgba(0,0,0,.5); }
 .detail-gallery { grid-template-columns: repeat(4,minmax(0,1fr)); }
-.detail-description, .comments-section, .rating-section {
+.detail-description, .comments-section {
   border: 2px solid var(--line);
   border-radius: var(--hand-radius);
   background: var(--surface-2);
