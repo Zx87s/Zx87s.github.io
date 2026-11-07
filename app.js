@@ -1468,7 +1468,7 @@
     top.append(heading);
     const stats = make("div", "card-metrics cartoon-panel");
     stats.append(
-      makeIconText("span", "metric-item file-size", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item file-size", formatFileSize(item.downloadSize), "upload"),
       makeIconText("span", "metric-item downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
       makeViewStat(item),
       makeIconText("span", "metric-item comments-count", `${Number(item.commentCount) || 0} تعليق`, "comments"),
@@ -1703,7 +1703,7 @@
     if (item.description) info.append(make("p", "detail-description", item.description));
     const stats = make("div", "detail-stats card-metrics cartoon-panel");
     stats.append(
-      makeIconText("span", "metric-item detail-file-size", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item detail-file-size", formatFileSize(item.downloadSize), "upload"),
       makeIconText("span", "metric-item detail-download-count", `${Number(item.downloadCount) || 0} تحميل`, "download"),
       makeViewStat(item),
       makeIconText("span", "metric-item detail-comment-count", `${Number(item.commentCount) || state.comments.length || 0} تعليق`, "comments"),
@@ -3409,7 +3409,7 @@
       const stats = make("div", "admin-stats");
       stats.classList.add("admin-translation-metrics");
       stats.append(
-        makeIconText("span", "metric-item", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+        makeIconText("span", "metric-item", formatFileSize(item.downloadSize), "upload"),
         makeIconText("span", "stat-line", `${Number(item.downloadCount) || 0} تحميل`, "download"),
         makeViewStat(item),
         makeIconText("span", "stat-line", `${Number(item.commentCount) || 0} تعليق`, "comments"),
@@ -3517,7 +3517,7 @@
     body.append(meta, projectInfo(item));
     const previewMetrics = make("div", "card-metrics cartoon-panel");
     previewMetrics.append(
-      makeIconText("span", "metric-item", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item", formatFileSize(item.downloadSize), "upload"),
       makeIconText("span", "metric-item", "0 تحميل", "download"),
       makeIconText("span", "metric-item", "0 مشاهدة", "eye"),
       makeIconText("span", "metric-item", "0 تعليق", "comments"),
