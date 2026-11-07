@@ -20,8 +20,8 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://ta3reebat-memberships.zx87s.chatgpt.site" crossorigin />
     <link rel="preload" href="https://ta3reebat-memberships.zx87s.chatgpt.site/api/bootstrap" as="fetch" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=43" />
-    <script src="./app.js?v=43" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=45" />
+    <script src="./app.js?v=45" defer></script>
   </head>
   <body>
     <div class="page-loading" id="page-loading" role="status" aria-live="polite" hidden>
@@ -326,29 +326,46 @@
           <form id="translation-form" class="translation-form admin-editor-form">
             <div class="editor-form-heading span-2"><div><span>محرر التعريب</span><h3 id="translation-editor-title">إضافة تعريب جديد</h3></div><small>تظهر المعاينة مباشرة قبل الحفظ</small></div>
             <input name="id" type="hidden" />
-            <label>اسم التعريب<input name="title" maxlength="120" required /></label>
-            <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
-            <label class="span-2">الوصف<textarea name="description" rows="3" maxlength="2000"></textarea></label>
-            <label>الفئة<select name="access" required><option value="free">مجاني</option><option value="vip">VIP</option></select></label>
-            <label>نوع اللعبة<input name="genre" maxlength="50" placeholder="مثال: رعب، مغامرات، أكشن" /></label>
-            <label>سنة إصدار اللعبة<input name="releaseYear" type="number" min="1970" max="2100" /></label>
-            <label>حالة التعريب<select name="projectStatus"><option value="released">متاح</option><option value="planned">مخطط له</option><option value="translating">قيد التعريب</option><option value="testing">قيد الاختبار</option></select></label>
-            <label>نسبة الإنجاز<input name="progress" type="number" min="0" max="100" value="100" required /></label>
-            <label class="check-label"><input name="earlyAccess" type="checkbox" /> وصول مبكر لأعضاء VIP</label>
-            <label>موعد الإتاحة المجانية (اختياري)<input name="freeAt" type="datetime-local" /><small>إن تُرك فارغًا، يبقى الوصول المبكر مخصصًا لـVIP.</small></label>
-            <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
-            <label id="download-file-field" class="file-field">ملف التعريب من الجهاز (حتى 10GB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
-            <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
-            <label class="file-field">صور داخل اللعبة (حتى 4)<span class="file-picker"><span data-file-label="gallery">لم تُحدد صور</span><span class="file-button">اختيار صور</span><input name="gallery" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></span></label>
-            <label>تاريخ النشر<input name="publishedAt" type="datetime-local" /></label>
-            <label class="check-label"><input name="isFeatured" type="checkbox" /> تعريب مميز</label>
-            <fieldset class="translation-tags-field span-2">
-              <legend>وسوم التعريب</legend>
-              <label class="check-label"><input name="isNewRelease" type="checkbox" /> جديد</label>
-              <label class="check-label"><input name="hasNewUpdate" type="checkbox" /> تحديث جديد</label>
-              <label class="check-label"><input name="isExperimental" type="checkbox" /> تجريبي</label>
+            <fieldset class="admin-editor-section span-2" data-editor-section="basic">
+              <legend><b>1</b> المعلومات الأساسية</legend>
+              <label>اسم التعريب<input name="title" maxlength="120" required /></label>
+              <label>المعرّف المختصر<input name="slug" maxlength="80" dir="ltr" placeholder="يُنشأ تلقائيًا" /></label>
+              <label class="span-2">الوصف<textarea name="description" rows="3" maxlength="2000"></textarea></label>
+              <label>نوع اللعبة<input name="genre" maxlength="50" placeholder="مثال: رعب، مغامرات، أكشن" /></label>
+              <label>سنة إصدار اللعبة<input name="releaseYear" type="number" min="1970" max="2100" /></label>
             </fieldset>
-            <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور</label>
+            <fieldset class="admin-editor-section span-2" data-editor-section="release">
+              <legend><b>2</b> الإصدار والحالة</legend>
+              <label>الفئة<select name="access" required><option value="free">مجاني</option><option value="vip">VIP</option></select></label>
+              <label>حالة التعريب<select name="projectStatus"><option value="released">متاح</option><option value="planned">مخطط له</option><option value="translating">قيد التعريب</option><option value="testing">قيد الاختبار</option></select></label>
+              <label>نسبة الإنجاز<input name="progress" type="number" min="0" max="100" value="100" required /></label>
+              <label>موعد الإتاحة المجانية (اختياري)<input name="freeAt" type="datetime-local" /><small>إن تُرك فارغًا، يبقى الوصول المبكر مخصصًا لـVIP.</small></label>
+              <label class="check-label span-2"><input name="earlyAccess" type="checkbox" /> وصول مبكر لأعضاء VIP</label>
+            </fieldset>
+            <fieldset class="admin-editor-section span-2" data-editor-section="files">
+              <legend><b>3</b> التحميل والصور</legend>
+              <label id="download-url-field">رابط التنزيل للتعريب المجاني (اختياري عند رفع ملف)<input name="downloadUrl" type="url" inputmode="url" dir="ltr" /></label>
+              <div id="download-size-field" class="manual-size-field">
+                <label>مساحة التعريب<input name="manualDownloadSize" type="number" min="0.01" max="10240" step="0.01" inputmode="decimal" placeholder="مثال: 850" /></label>
+                <label>الوحدة<select name="manualDownloadUnit"><option value="MB">MB</option><option value="GB">GB</option><option value="KB">KB</option></select></label>
+                <small class="span-2">للروابط الخارجية: اكتب الحجم الذي سيظهر في البطاقة. الملفات المرفوعة يُحسب حجمها تلقائيًا.</small>
+              </div>
+              <label id="download-file-field" class="file-field span-2">ملف التعريب من الجهاز (حتى 10GB)<span class="file-picker"><span data-file-label="downloadFile">لم يُحدد ملف</span><span class="file-button">اختيار ملف</span><input name="downloadFile" type="file" /></span><span class="field-note" id="download-file-note">المجاني يقبل رابطًا أو ملفًا، وVIP يتطلب ملفًا محميًا.</span></label>
+              <label class="file-field">صورة الغلاف<span class="file-picker"><span data-file-label="cover">لم تُحدد صورة</span><span class="file-button">اختيار صورة</span><input name="cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /></span></label>
+              <label class="file-field">صور داخل اللعبة (حتى 4)<span class="file-picker"><span data-file-label="gallery">لم تُحدد صور</span><span class="file-button">اختيار صور</span><input name="gallery" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></span></label>
+            </fieldset>
+            <fieldset class="admin-editor-section span-2" data-editor-section="publishing">
+              <legend><b>4</b> النشر والوسوم</legend>
+              <label>تاريخ النشر<input name="publishedAt" type="datetime-local" /></label>
+              <label class="check-label"><input name="isFeatured" type="checkbox" /> تعريب مميز</label>
+              <fieldset class="translation-tags-field span-2">
+                <legend>وسوم التعريب</legend>
+                <label class="check-label"><input name="isNewRelease" type="checkbox" /> جديد</label>
+                <label class="check-label"><input name="hasNewUpdate" type="checkbox" /> تحديث جديد</label>
+                <label class="check-label"><input name="isExperimental" type="checkbox" /> تجريبي</label>
+              </fieldset>
+              <label class="check-label"><input name="isPublished" type="checkbox" checked /> منشور</label>
+            </fieldset>
             <div class="form-actions span-2"><button class="button primary" type="submit">حفظ التعريب</button><button class="button ghost" id="cancel-edit" type="button" hidden>إلغاء التعديل</button></div>
           </form>
           <aside class="editor-preview" aria-labelledby="translation-preview-heading">
