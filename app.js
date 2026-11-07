@@ -37,16 +37,26 @@
   let detailPrefetchScheduled = false;
   let detailPrefetchObserver = null;
 
+  function createVisitorId() {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
   function visitorId() {
     const valid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || "");
     try {
       const existing = localStorage.getItem(VISITOR_KEY);
       if (valid(existing)) return existing.toLowerCase();
-      const created = crypto.randomUUID();
+      const created = createVisitorId();
       localStorage.setItem(VISITOR_KEY, created);
       return created;
     } catch {
-      return crypto.randomUUID();
+      return createVisitorId();
     }
   }
 
@@ -1381,38 +1391,6 @@
     return root;
   }
 
-  function makeRatingSection(item) {
-    const section = make("section", "detail-section rating-section");
-    section.append(make("h3", "", "تقييم جودة التعريب"));
-    const summary = make("p", "", item.ratingCount ? `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم` : "لا توجد تقييمات بعد.");
-    const message = make("p", "", "جارٍ تحميل التقييم…");
-    const controls = make("div", "rating-controls");
-    section.append(summary, controls, message);
-    const paint = (data) => {
-      summary.textContent = data.ratingCount ? `★ ${Number(data.ratingAverage).toFixed(1)} من 5 · ${data.ratingCount} تقييم` : "لا توجد تقييمات بعد.";
-      controls.replaceChildren();
-      message.textContent = data.canRate ? (data.myScore ? `تقييمك الحالي: ${data.myScore} من 5. يمكنك تعديله.` : "اختر تقييمك من نجمة إلى خمس نجوم.") : "التقييم متاح للحسابات التي نزّلت التعريب.";
-      if (!data.canRate) return;
-      for (let score = 1; score <= 5; score++) {
-        const button = make("button", `button ghost${data.myScore === score ? " selected-rating" : ""}`, `${score} ★`);
-        button.type = "button"; button.setAttribute("aria-label", `تقييم ${score} من خمس نجوم`); button.setAttribute("aria-pressed", String(data.myScore === score));
-        button.addEventListener("click", async () => {
-          controls.querySelectorAll("button").forEach((node) => { node.disabled = true; });
-          try {
-            const result = await api(`/api/translations/${item.id}/rating`, { method: "POST", body: JSON.stringify({ score }) });
-            Object.assign(item, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
-            const catalogItem = state.catalog.find((row) => row.id === item.id);
-            if (catalogItem) Object.assign(catalogItem, { ratingAverage: result.ratingAverage, ratingCount: result.ratingCount });
-            if (section.isConnected) { paint(result); renderCatalog(); }
-          } catch (error) { message.textContent = error.message; controls.querySelectorAll("button").forEach((node) => { node.disabled = false; }); }
-        });
-        controls.append(button);
-      }
-    };
-    api(`/api/translations/${item.id}/rating`).then((data) => { if (section.isConnected) paint(data); }).catch((error) => { message.textContent = error.message; });
-    return section;
-  }
-
   function visibleCatalog() {
     const query = normalize($("#catalog-search").value);
     const items = state.catalog.filter((item) => {
@@ -1488,16 +1466,15 @@
     titleLink.addEventListener("focus", () => prefetchTranslation(item.id, true), { once: true });
     heading.append(titleLink);
     top.append(heading);
-    const stats = make("div", "card-stats");
+    const stats = make("div", "card-metrics cartoon-panel");
     stats.append(
-      makeIconText("span", "stat-line downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeIconText("span", "metric-item file-size", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item downloads", `${Number(item.downloadCount) || 0} تحميل`, "download"),
       makeViewStat(item),
-      makeIconText("span", "stat-line comments-count", `${Number(item.commentCount) || 0} تعليق`, "comments"),
-      makeIconText("time", "stat-line published-date", formatDate(item.publishedAt), "calendar"),
+      makeIconText("span", "metric-item comments-count", `${Number(item.commentCount) || 0} تعليق`, "comments"),
     );
     top.append(stats);
     body.append(top, projectInfo(item));
-    if (item.ratingCount) body.append(make("p", "rating-summary", `★ ${Number(item.ratingAverage).toFixed(1)} من 5 · ${item.ratingCount} تقييم`));
     if (item.description) body.append(make("p", "card-description", item.description));
     const action = translationAction(item);
     const button = makeIconText("button", "card-action", action.label, action.icon);
@@ -1724,13 +1701,14 @@
     if (item.isFeatured) badges.append(makeIconText("span", "featured-badge detail-featured", "تعريب مميز", "star"));
     info.append(badges, make("h2", "", item.title));
     if (item.description) info.append(make("p", "detail-description", item.description));
-    const stats = make("div", "detail-stats");
+    const stats = make("div", "detail-stats card-metrics cartoon-panel");
     stats.append(
-      makeIconText("span", "stat-line detail-download-count", `${Number(item.downloadCount) || 0} تحميل`, "download"),
+      makeIconText("span", "metric-item detail-file-size", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item detail-download-count", `${Number(item.downloadCount) || 0} تحميل`, "download"),
       makeViewStat(item),
-      makeIconText("span", "stat-line detail-comment-count", `${Number(item.commentCount) || state.comments.length || 0} تعليق`, "comments"),
-      makeIconText("time", "stat-line detail-published-date", `نُشر في ${formatDate(item.publishedAt)}`, "calendar"),
+      makeIconText("span", "metric-item detail-comment-count", `${Number(item.commentCount) || state.comments.length || 0} تعليق`, "comments"),
     );
+    stats.append(makeIconText("time", "metric-item detail-published-date metric-wide", `نُشر في ${formatDate(item.publishedAt)}`, "calendar"));
     info.append(stats);
     info.append(projectInfo(item));
     const action = translationAction(item);
@@ -1781,7 +1759,7 @@
       });
     }
     gallery.append(galleryGrid);
-    fragment.append(gallery, makeRatingSection(item), makeCommentsSection());
+    fragment.append(gallery, makeCommentsSection());
     root.replaceChildren(fragment);
   }
 
@@ -3173,10 +3151,30 @@
     }
   }
 
-  function formatBytes(bytes) {
-    if (!Number.isFinite(bytes) || bytes < 1) return "0 MB";
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
-    return `${Math.ceil(bytes / 1024)} KB`;
+  function formatFileSize(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value < 1) return "—";
+    if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 2).replace(/\.0+$/, "")} GB`;
+    if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(value >= 100 * 1024 ** 2 ? 0 : 1).replace(/\.0$/, "")} MB`;
+    return `${Math.ceil(value / 1024)} KB`;
+  }
+
+  const formatBytes = formatFileSize;
+
+  function manualSizeInBytes(value, unit) {
+    const amount = Number(value);
+    const multiplier = { KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3 }[unit];
+    if (!Number.isFinite(amount) || amount <= 0 || !multiplier) return null;
+    const bytes = Math.round(amount * multiplier);
+    return bytes <= MAX_TRANSLATION_FILE_BYTES ? bytes : null;
+  }
+
+  function splitFileSize(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value < 1) return { value: "", unit: "MB" };
+    if (value >= 1024 ** 3) return { value: String(Number((value / 1024 ** 3).toFixed(2))), unit: "GB" };
+    if (value < 1024 ** 2) return { value: String(Math.ceil(value / 1024)), unit: "KB" };
+    return { value: String(Number((value / 1024 ** 2).toFixed(2))), unit: "MB" };
   }
 
   async function uploadTranslationPart(session, partNumber, chunk) {
@@ -3318,7 +3316,8 @@
       } else if (access === "free" && externalUrl) {
         downloadKey = null;
         downloadName = null;
-        downloadSize = null;
+        downloadSize = manualSizeInBytes(values.get("manualDownloadSize"), values.get("manualDownloadUnit"));
+        if (!downloadSize) throw new Error("أدخل مساحة التعريب للرابط الخارجي واختر وحدة صحيحة لا تتجاوز 10GB.");
       }
       const needsFile = values.get("projectStatus") === "released" || values.get("earlyAccess") === "on";
       if (needsFile && (access === "vip" || values.get("earlyAccess") === "on") && !downloadKey) throw new Error("اختر ملف تعريب VIP من الجهاز.");
@@ -3408,13 +3407,16 @@
         info.append(tagList);
       }
       const stats = make("div", "admin-stats");
+      stats.classList.add("admin-translation-metrics");
       stats.append(
+        makeIconText("span", "metric-item", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
         makeIconText("span", "stat-line", `${Number(item.downloadCount) || 0} تحميل`, "download"),
         makeViewStat(item),
         makeIconText("span", "stat-line", `${Number(item.commentCount) || 0} تعليق`, "comments"),
       );
       info.append(stats);
-      if (item.downloadName) info.append(makeIconText("span", "admin-file-name", `${item.downloadName} · ${formatBytes(item.downloadSize)}`, "upload"));
+      if (item.downloadName) info.append(makeIconText("span", "admin-file-name", `${item.downloadName} · ${formatFileSize(item.downloadSize)}`, "upload"));
+      else if (item.downloadUrl) info.append(makeIconText("span", "admin-file-name", `رابط خارجي · ${formatFileSize(item.downloadSize)}`, "upload"));
       if (!item.isPublished) info.append(make("span", "unpublished", "غير منشور"));
       if (item.discordDelivery === "sent") info.append(make("span", "", "تم الإعلان في Discord"));
       if (item.discordDelivery === "failed") info.append(make("span", "unpublished", "لم يُرسل إعلان Discord — أعد الحفظ للمحاولة"));
@@ -3490,6 +3492,8 @@
       publishedAt: form.elements.publishedAt.value || new Date().toISOString(),
       coverUrl: adminPreviewMedia.translationCover || existing.cover,
       galleryUrls: adminPreviewMedia.translationGallery.length ? adminPreviewMedia.translationGallery : existing.gallery,
+      downloadSize: form.elements.downloadFile.files?.[0]?.size
+        || (form.elements.downloadUrl.value.trim() ? manualSizeInBytes(form.elements.manualDownloadSize.value, form.elements.manualDownloadUnit.value) : state.editing?.downloadSize),
     };
     const cover = make("div", "preview-cover");
     if (item.coverUrl) {
@@ -3511,6 +3515,14 @@
     const meta = make("div", "preview-meta");
     meta.append(make("span", "", `النشر: ${formatDate(item.publishedAt)}`), make("span", "", item.isPublished ? "ظاهر للزوار" : "غير منشور"));
     body.append(meta, projectInfo(item));
+    const previewMetrics = make("div", "card-metrics cartoon-panel");
+    previewMetrics.append(
+      makeIconText("span", "metric-item", `مساحة التعريب: ${formatFileSize(item.downloadSize)}`, "upload"),
+      makeIconText("span", "metric-item", "0 تحميل", "download"),
+      makeIconText("span", "metric-item", "0 مشاهدة", "eye"),
+      makeIconText("span", "metric-item", "0 تعليق", "comments"),
+    );
+    body.append(previewMetrics);
     const gallery = make("div", "preview-gallery");
     for (let index = 0; index < 4; index += 1) {
       const figure = make("figure");
@@ -3580,6 +3592,9 @@
     form.elements.earlyAccess.checked = Boolean(item.earlyAccess);
     form.elements.freeAt.value = item.freeAt ? toDateTimeLocal(item.freeAt) : "";
     form.elements.downloadUrl.value = item.downloadUrl || "";
+    const manualSize = splitFileSize(item.downloadSize);
+    form.elements.manualDownloadSize.value = item.downloadKey ? "" : manualSize.value;
+    form.elements.manualDownloadUnit.value = manualSize.unit;
     form.elements.isPublished.checked = item.isPublished;
     form.elements.isFeatured.checked = item.isFeatured;
     form.elements.hasNewUpdate.checked = item.hasNewUpdate;
@@ -3634,9 +3649,12 @@
     if (form.elements.earlyAccess.checked) form.elements.access.value = "vip";
     form.elements.freeAt.disabled = !form.elements.earlyAccess.checked;
     const isVip = form.elements.access.value === "vip";
+    const hasSelectedFile = Boolean(form.elements.downloadFile.files?.length);
     $("#download-url-field").hidden = isVip;
+    $("#download-size-field").hidden = isVip || hasSelectedFile || Boolean(state.editing?.downloadKey && !form.elements.downloadUrl.value);
     $("#download-file-field").hidden = false;
     form.elements.downloadUrl.required = false;
+    form.elements.manualDownloadSize.required = !isVip && !hasSelectedFile && Boolean(form.elements.downloadUrl.value.trim());
     form.elements.downloadFile.required = isVip && !state.editing?.downloadKey && (form.elements.projectStatus.value === "released" || form.elements.earlyAccess.checked);
     const note = $("#download-file-note");
     if (state.editing?.downloadKey && !form.elements.downloadFile.files?.length) {
@@ -4454,7 +4472,9 @@
   $("#translation-form").elements.downloadFile.addEventListener("change", (event) => {
     updateFileLabel(event.currentTarget);
     syncDownloadFields();
+    renderTranslationPreview();
   });
+  $("#translation-form").elements.downloadUrl.addEventListener("input", syncDownloadFields);
   $("#translation-form").elements.access.addEventListener("change", syncDownloadFields);
   ["projectStatus", "earlyAccess"].forEach((name) => $("#translation-form").elements[name].addEventListener("change", () => { syncDownloadFields(); renderTranslationPreview(); }));
   $("#translation-dialog").addEventListener("close", () => {
